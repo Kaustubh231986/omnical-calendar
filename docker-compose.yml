@@ -1,0 +1,22 @@
+services:
+  omnical:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: omnical-enterprise:latest
+    container_name: omnical-master-calendar
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    # If running with custom external SMTP gateways or domain:
+    # env_file:
+    #   - .env.production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
