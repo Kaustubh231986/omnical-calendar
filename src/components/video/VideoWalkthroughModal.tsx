@@ -21,6 +21,9 @@ import {
   Layers,
   ArrowRight,
   CheckCircle2,
+  GitBranch,
+  GitCommit,
+  FolderGit2,
 } from 'lucide-react';
 
 interface VideoWalkthroughModalProps {
@@ -44,36 +47,44 @@ const CHAPTERS: Chapter[] = [
     title: 'Deploying on Another Machine',
     timestamp: '00:00',
     startSeconds: 0,
-    endSeconds: 70,
+    endSeconds: 60,
     description: 'Clone repository, install dependencies, run with Docker or Node.js on port 3000.',
   },
   {
     id: 2,
     title: 'Configuring Multiple Email IDs',
-    timestamp: '01:10',
-    startSeconds: 70,
-    endSeconds: 150,
+    timestamp: '01:00',
+    startSeconds: 60,
+    endSeconds: 125,
     description: 'Partition isolated sender emails per company (Mandar, Agharkar, Rajadhyaksha, NBC).',
   },
   {
     id: 3,
     title: '24h Advance Alerts & Notes Sync',
-    timestamp: '02:30',
-    startSeconds: 150,
-    endSeconds: 215,
+    timestamp: '02:05',
+    startSeconds: 125,
+    endSeconds: 185,
     description: 'Pre-meeting agendas, attendance quorums, post-meeting action items, and account sync.',
   },
   {
     id: 4,
     title: 'Category A Client Governance',
-    timestamp: '03:35',
-    startSeconds: 215,
-    endSeconds: 270,
+    timestamp: '03:05',
+    startSeconds: 185,
+    endSeconds: 240,
     description: 'Mandatory 30-day monthly updates, 90-day QBRs, and automated team reminders.',
+  },
+  {
+    id: 5,
+    title: 'GitLab & GitHub Upload',
+    timestamp: '04:00',
+    startSeconds: 240,
+    endSeconds: 300,
+    description: 'Upload codebase to GitLab or GitHub with remote origin, SSH keys, or Personal Access Tokens.',
   },
 ];
 
-const TOTAL_DURATION = 270; // 4 minutes 30 seconds
+const TOTAL_DURATION = 300; // 5 minutes
 
 export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
   isOpen,
@@ -84,7 +95,9 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'docker' | 'node' | 'env' | 'apppass'>('docker');
+  const [activeTab, setActiveTab] = useState<'gitlab' | 'docker' | 'node' | 'env' | 'apppass'>('gitlab');
+  const [repoPlatform, setRepoPlatform] = useState<'gitlab' | 'github'>('gitlab');
+  const [customRepoUrl, setCustomRepoUrl] = useState('https://gitlab.com/kaustubh/omnical-calendar.git');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Playback loop timer
@@ -385,6 +398,48 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* SCENE 5: GitLab & GitHub Push (240s - 300s) */}
+                {currentChapter.id === 5 && (
+                  <div className="w-full max-w-2xl bg-neutral-900/90 border border-neutral-700/80 rounded-xl p-5 shadow-2xl backdrop-blur-md space-y-4">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-neutral-100">
+                        <FolderGit2 className="w-4 h-4 text-orange-400" />
+                        <span>GitLab Repository Deployment</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">
+                        Git Remote: main
+                      </span>
+                    </div>
+
+                    <div className="bg-neutral-950 p-3.5 rounded-lg border border-neutral-800 font-mono text-xs space-y-2">
+                      <div className="text-neutral-400">
+                        <span className="text-emerald-400 font-bold">$</span> git remote add origin https://gitlab.com/username/omnical-calendar.git
+                      </div>
+                      <div className="text-neutral-400">
+                        <span className="text-emerald-400 font-bold">$</span> git push -u origin main
+                      </div>
+                      <div className="text-neutral-500 text-[11px] pl-3 py-1 space-y-0.5 border-l-2 border-orange-500/40">
+                        <div>Enumerating objects: 30, done.</div>
+                        <div>Writing objects: 100% (30/30), 184.20 KiB | 8.37 MiB/s, done.</div>
+                        <div className="text-emerald-400 font-semibold">
+                          ✔ To https://gitlab.com/username/omnical-calendar.git
+                        </div>
+                        <div className="text-neutral-300">
+                          * [new branch] main -&gt; main
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-orange-400 bg-orange-950/20 p-2.5 rounded border border-orange-500/20 font-mono">
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        Codebase backed up and version-controlled on GitLab!
+                      </span>
+                      <span className="text-neutral-400 text-[11px]">Branch: main</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Subtitle / Narration Bar */}
@@ -510,20 +565,31 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
                 <Terminal className="w-4 h-4 text-indigo-400" />
                 Quick Copy Command Deck (Run on Target Machine)
               </h3>
-              <div className="flex items-center gap-1 text-xs">
+              <div className="flex items-center gap-1 text-xs overflow-x-auto">
+                <button
+                  onClick={() => setActiveTab('gitlab')}
+                  className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                    activeTab === 'gitlab'
+                      ? 'bg-orange-600/30 text-orange-200 font-semibold border border-orange-500/50'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  <FolderGit2 className="w-3.5 h-3.5 text-orange-400" />
+                  <span>GitLab / GitHub Upload</span>
+                </button>
                 <button
                   onClick={() => setActiveTab('docker')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
+                  className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
                     activeTab === 'docker'
                       ? 'bg-neutral-800 text-neutral-100 font-semibold border border-neutral-700'
                       : 'text-neutral-400 hover:text-neutral-200'
                   }`}
                 >
-                  Docker Compose (Recommended)
+                  Docker Compose
                 </button>
                 <button
                   onClick={() => setActiveTab('node')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
+                  className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
                     activeTab === 'node'
                       ? 'bg-neutral-800 text-neutral-100 font-semibold border border-neutral-700'
                       : 'text-neutral-400 hover:text-neutral-200'
@@ -533,7 +599,7 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
                 </button>
                 <button
                   onClick={() => setActiveTab('env')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
+                  className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
                     activeTab === 'env'
                       ? 'bg-neutral-800 text-neutral-100 font-semibold border border-neutral-700'
                       : 'text-neutral-400 hover:text-neutral-200'
@@ -543,7 +609,7 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
                 </button>
                 <button
                   onClick={() => setActiveTab('apppass')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
+                  className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
                     activeTab === 'apppass'
                       ? 'bg-neutral-800 text-neutral-100 font-semibold border border-neutral-700'
                       : 'text-neutral-400 hover:text-neutral-200'
@@ -553,6 +619,118 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* TAB 0: GITLAB / GITHUB UPLOAD */}
+            {activeTab === 'gitlab' && (
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 text-xs text-neutral-200 relative space-y-3 font-sans">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800/80 pb-3">
+                  <div>
+                    <span className="font-semibold text-neutral-100 flex items-center gap-1.5">
+                      <FolderGit2 className="w-4 h-4 text-orange-400" />
+                      Push to Your Remote Git Repository
+                    </span>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                      The local git repo is already initialized with all files on the <code className="text-neutral-200 font-mono">main</code> branch.
+                    </p>
+                  </div>
+
+                  {/* Platform toggle */}
+                  <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 p-0.5 rounded-lg text-[11px] font-mono shrink-0">
+                    <button
+                      onClick={() => {
+                        setRepoPlatform('gitlab');
+                        if (customRepoUrl.includes('github.com')) {
+                          setCustomRepoUrl('https://gitlab.com/kaustubh/omnical-calendar.git');
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded transition-colors ${
+                        repoPlatform === 'gitlab'
+                          ? 'bg-orange-600 text-white font-bold'
+                          : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      GitLab
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRepoPlatform('github');
+                        if (customRepoUrl.includes('gitlab.com')) {
+                          setCustomRepoUrl('https://github.com/projects/omnical-calendar.git');
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded transition-colors ${
+                        repoPlatform === 'github'
+                          ? 'bg-neutral-700 text-white font-bold'
+                          : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      GitHub
+                    </button>
+                  </div>
+                </div>
+
+                {/* Target Repo URL Input */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-neutral-300">
+                    Your {repoPlatform === 'gitlab' ? 'GitLab' : 'GitHub'} Repository URL:
+                  </label>
+                  <input
+                    type="text"
+                    value={customRepoUrl}
+                    onChange={(e) => setCustomRepoUrl(e.target.value)}
+                    placeholder={
+                      repoPlatform === 'gitlab'
+                        ? 'https://gitlab.com/username/project.git'
+                        : 'https://github.com/username/project.git'
+                    }
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-neutral-100 font-mono focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Generated Commands block */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 font-mono text-[11px] space-y-1 relative">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-neutral-800 text-[10px] text-neutral-400 font-sans">
+                    <span>Generated Git Commands for your terminal:</span>
+                    <button
+                      onClick={() =>
+                        handleCopy(
+                          `# 1. Ensure branch is main\ngit branch -M main\n\n# 2. Add remote repository URL\ngit remote add origin ${customRepoUrl} 2>/dev/null || git remote set-url origin ${customRepoUrl}\n\n# 3. Push to ${repoPlatform === 'gitlab' ? 'GitLab' : 'GitHub'}\ngit push -u origin main`,
+                          'gitlab_cmd'
+                        )
+                      }
+                      className="px-2 py-0.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      {copiedKey === 'gitlab_cmd' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedKey === 'gitlab_cmd' ? 'Copied!' : 'Copy Script'}</span>
+                    </button>
+                  </div>
+                  <pre className="text-neutral-300 overflow-x-auto leading-relaxed pt-1">
+{`# 1. Ensure default branch is main
+git branch -M main
+
+# 2. Add remote repository URL (or update if already set)
+git remote add origin ${customRepoUrl} 2>/dev/null || git remote set-url origin ${customRepoUrl}
+
+# 3. Push all code to ${repoPlatform === 'gitlab' ? 'GitLab' : 'GitHub'}
+git push -u origin main`}
+                  </pre>
+                </div>
+
+                {/* Authentication Note */}
+                <div className="bg-neutral-900/60 p-2.5 rounded-lg border border-neutral-800/80 text-[11px] space-y-1.5">
+                  <div className="font-semibold text-neutral-200 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    Authentication details:
+                  </div>
+                  <p className="text-neutral-400 leading-relaxed">
+                    When prompted for your password during <code className="text-neutral-300">git push</code>, enter a <strong>GitLab Personal Access Token</strong> (with <code className="text-neutral-200">read_repository</code> and <code className="text-neutral-200">write_repository</code> scopes) from <em>GitLab &gt; Preferences &gt; Access Tokens</em>.
+                  </p>
+                  <p className="text-neutral-500 text-[10px]">
+                    Detailed instructions are also in <code className="text-neutral-300">GITLAB_UPLOAD_GUIDE.md</code> in the project root.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* TAB 1: DOCKER COMPOSE */}
             {activeTab === 'docker' && (
