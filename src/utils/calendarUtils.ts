@@ -1,6 +1,106 @@
 import { MeetingEvent, CompanyProfile, Client } from '../types';
 
-export const CURRENT_VIRTUAL_TIME = new Date('2026-09-05T20:20:00+05:30');
+export const CURRENT_VIRTUAL_TIME = new Date();
+
+export function formatDateIso(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function formatMonthYear(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+export function isSameDay(d1: Date, d2: Date): boolean {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+export interface DayColumnInfo {
+  dayName: string;
+  dayNumber: number;
+  dateString: string;
+  isToday: boolean;
+  fullDate: Date;
+}
+
+export function getDaysWindow(baseDate: Date, count = 4): DayColumnInfo[] {
+  const days: DayColumnInfo[] = [];
+  const today = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + i);
+    const dateString = formatDateIso(d);
+    days.push({
+      dayName: d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+      dayNumber: d.getDate(),
+      dateString,
+      isToday: isSameDay(d, today),
+      fullDate: d,
+    });
+  }
+  return days;
+}
+
+export interface MonthGridCell {
+  dayNumber: number;
+  dateString: string;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  fullDate: Date;
+}
+
+export function getMonthMatrix(year: number, month: number): MonthGridCell[] {
+  const today = new Date();
+  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 is Sunday
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthLastDate = new Date(year, month, 0).getDate();
+  const cells: MonthGridCell[] = [];
+
+  // Trailing previous month days
+  for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+    const d = new Date(year, month - 1, prevMonthLastDate - i);
+    cells.push({
+      dayNumber: d.getDate(),
+      dateString: formatDateIso(d),
+      isCurrentMonth: false,
+      isToday: isSameDay(d, today),
+      fullDate: d,
+    });
+  }
+
+  // Current month days
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(year, month, day);
+    cells.push({
+      dayNumber: day,
+      dateString: formatDateIso(d),
+      isCurrentMonth: true,
+      isToday: isSameDay(d, today),
+      fullDate: d,
+    });
+  }
+
+  // Leading next month days to complete 5 or 6 weeks (35 or 42 grid cells)
+  const targetTotal = cells.length > 35 ? 42 : 35;
+  const remaining = targetTotal - cells.length;
+  for (let day = 1; day <= remaining; day++) {
+    const d = new Date(year, month + 1, day);
+    cells.push({
+      dayNumber: day,
+      dateString: formatDateIso(d),
+      isCurrentMonth: false,
+      isToday: isSameDay(d, today),
+      fullDate: d,
+    });
+  }
+
+  return cells;
+}
 
 export function formatTimeRange(startIso: string, endIso: string): string {
   const start = new Date(startIso);
