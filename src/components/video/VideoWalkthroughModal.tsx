@@ -565,7 +565,7 @@ export const VideoWalkthroughModal: React.FC<VideoWalkthroughModalProps> = ({
                 <Terminal className="w-4 h-4 text-indigo-400" />
                 Quick Copy Command Deck (Run on Target Machine)
               </h3>
-              <div className="flex items-center gap-1 text-xs overflow-x-auto">
+              <div className="flex flex-wrap items-center gap-1 text-xs">
                 <button
                   onClick={() => setActiveTab('gitlab')}
                   className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap flex items-center gap-1.5 ${

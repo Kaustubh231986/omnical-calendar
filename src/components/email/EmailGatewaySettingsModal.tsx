@@ -158,7 +158,7 @@ export const EmailGatewaySettingsModal: React.FC<EmailGatewaySettingsModalProps>
                 Click any company to configure its dedicated sender mailbox
               </span>
             </label>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
               {companies.map((c) => {
                 const isSelected = c.id === selectedCompId;
                 return (
@@ -168,17 +168,17 @@ export const EmailGatewaySettingsModal: React.FC<EmailGatewaySettingsModalProps>
                       setSelectedCompId(c.id);
                       setTestResult(null);
                     }}
-                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
                       isSelected
-                        ? 'bg-neutral-800 border-indigo-500 text-neutral-100 shadow-xs'
+                        ? 'bg-neutral-800 border-indigo-500 text-neutral-100 shadow-xs ring-1 ring-indigo-500/30'
                         : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-850'
                     }`}
                   >
                     <span
-                      className="w-2 h-2 rounded-full"
+                      className="w-2 h-2 rounded-full shrink-0"
                       style={{ backgroundColor: c.accentHex }}
                     />
-                    <span>{c.name}</span>
+                    <span className="truncate max-w-[140px] sm:max-w-none">{c.name}</span>
                   </button>
                 );
               })}

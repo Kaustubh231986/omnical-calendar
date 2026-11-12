@@ -8,6 +8,10 @@ import {
   Building2,
   Play,
   Mail,
+  Calendar,
+  Award,
+  FileText,
+  TrendingUp,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -32,107 +36,142 @@ export const Header: React.FC<HeaderProps> = ({
     syncAllCalendars,
     unreadNotificationsCount,
     tierAUpcomingDeadlinesCount,
-    selectedCompanyId,
     currentCompany,
   } = useApp();
 
   const navLinks = [
-    { id: 'calendar', label: 'Master Schedule' },
-    { id: 'tiers', label: 'Client Tiers & Cadence' },
-    { id: 'logs', label: 'Historical Logs & Attendance' },
-    { id: 'analytics', label: 'Engagement Analytics' },
-    { id: 'profiles', label: 'Company Profiles' },
+    {
+      id: 'calendar',
+      label: 'Schedule',
+      mobileLabel: 'Schedule',
+      icon: Calendar,
+      tooltip: 'Master Unified Calendar',
+    },
+    {
+      id: 'tiers',
+      label: 'Client Tiers',
+      mobileLabel: 'Tiers',
+      icon: Award,
+      tooltip: 'Client Tiers & Cadence',
+      badge: tierAUpcomingDeadlinesCount,
+    },
+    {
+      id: 'logs',
+      label: 'Meeting Logs',
+      mobileLabel: 'Logs',
+      icon: FileText,
+      tooltip: 'Historical Logs & Attendance',
+    },
+    {
+      id: 'analytics',
+      label: 'Analytics',
+      mobileLabel: 'Analytics',
+      icon: TrendingUp,
+      tooltip: 'Engagement & Compliance Analytics',
+    },
+    {
+      id: 'profiles',
+      label: 'Companies',
+      mobileLabel: 'Companies',
+      icon: Building2,
+      tooltip: 'Company Profiles & Isolation',
+    },
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-neutral-800 bg-neutral-900/90 backdrop-blur-md">
-      <div className="flex h-16 items-center justify-between px-6 max-w-7xl mx-auto">
-        {/* Zone 1: Single text element wordmark */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-sm text-sm">
+    <header className="sticky top-0 z-40 w-full border-b border-neutral-800 bg-neutral-900/95 backdrop-blur-md">
+      <div className="flex h-16 items-center justify-between px-3 sm:px-6 max-w-7xl mx-auto gap-2">
+        {/* Left: Brand Wordmark */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-sm text-sm shrink-0">
             Ω
           </div>
-          <span className="text-base font-bold tracking-tight text-neutral-100 whitespace-nowrap">
-            OmniCal Enterprise
-          </span>
-          {currentCompany ? (
-            <span className="text-xs text-neutral-400 border-l border-neutral-700/80 pl-3 hidden sm:inline-flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentCompany.accentHex }} />
-              {currentCompany.name} (Isolated)
+          <div className="flex flex-col">
+            <span className="text-sm sm:text-base font-bold tracking-tight text-neutral-100 whitespace-nowrap">
+              OmniCal
             </span>
-          ) : (
-            <span className="text-xs text-neutral-400 border-l border-neutral-700/80 pl-3 hidden sm:inline-flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Unified Multi-Tenant Mode
-            </span>
-          )}
+            {currentCompany ? (
+              <span className="text-[10px] text-neutral-400 flex items-center gap-1">
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: currentCompany.accentHex }}
+                />
+                <span className="truncate max-w-[110px] sm:max-w-none">{currentCompany.name}</span>
+              </span>
+            ) : (
+              <span className="text-[10px] text-emerald-400 font-mono hidden sm:inline">
+                Multi-Tenant Master
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Zone 2: 4-6 clean text navigation links */}
-        <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-neutral-300">
+        {/* Center: Desktop Navigation Tabs (Fits cleanly starting at md: 768px, zero horizontal scrolling) */}
+        <nav className="hidden md:flex items-center gap-1 lg:gap-1.5 bg-neutral-950/80 p-1 rounded-xl border border-neutral-800">
           {navLinks.map((item) => {
             const isActive = currentTab === item.id;
+            const Icon = item.icon;
             return (
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`transition-colors relative py-1 text-xs md:text-sm whitespace-nowrap ${
+                title={item.tooltip}
+                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                   isActive
-                    ? 'text-neutral-100 font-semibold'
-                    : 'text-neutral-400 hover:text-neutral-200'
+                    ? 'bg-neutral-800 text-neutral-100 shadow-xs font-semibold'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
                 }`}
               >
-                {item.label}
-                {item.id === 'tiers' && tierAUpcomingDeadlinesCount > 0 && (
-                  <span className="ml-1.5 px-1.5 py-0.2 text-[10px] font-mono bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">
-                    {tierAUpcomingDeadlinesCount}
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-400' : 'text-neutral-400'}`} />
+                <span>{item.label}</span>
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="px-1.5 py-0.2 text-[9px] font-mono bg-amber-500/20 text-amber-300 rounded border border-amber-500/30 font-bold">
+                    {item.badge}
                   </span>
-                )}
-                {isActive && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
                 )}
               </button>
             );
           })}
         </nav>
 
-        {/* Zone 3: 1-2 primary actions */}
-        <div className="flex items-center gap-2.5">
-          {/* Video Guide with animated play badge */}
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Video Guide button */}
           <button
             onClick={onOpenVideoGuide}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg transition-colors whitespace-nowrap cursor-pointer shadow-xs"
-            title="Watch Video Tutorial: Machine Deployment & Multi-Email Configuration"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg transition-colors cursor-pointer shadow-xs"
+            title="Video Guide & Deployment Tutorial"
           >
-            <Play className="w-3.5 h-3.5 fill-current text-rose-400" />
-            <span className="hidden sm:inline">Video Guide & Deploy</span>
-            <span className="sm:hidden">Video</span>
+            <Play className="w-3.5 h-3.5 fill-current text-rose-400 shrink-0" />
+            <span className="hidden xl:inline">Video Guide</span>
           </button>
 
           {/* Email Gateways Multi-Account Manager */}
           <button
             onClick={onOpenEmailGateway}
-            className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-800 hover:bg-neutral-700 hover:text-neutral-100 border border-neutral-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-            title="Configure Multiple Email IDs for Company Profiles"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-800 hover:bg-neutral-700 hover:text-neutral-100 border border-neutral-700 rounded-lg transition-colors cursor-pointer"
+            title="Configure Dedicated Sender Email IDs for Each Company"
           >
-            <Mail className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Email Gateways</span>
+            <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span className="hidden xl:inline">Email Gateways</span>
           </button>
 
+          {/* Sync Feeds */}
           <button
             onClick={() => syncAllCalendars()}
             disabled={isSyncing}
             title="Sync all company calendar feeds"
-            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-800 hover:bg-neutral-700 hover:text-neutral-100 border border-neutral-700 rounded-lg transition-colors whitespace-nowrap disabled:opacity-50 cursor-pointer"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-800 hover:bg-neutral-700 hover:text-neutral-100 border border-neutral-700 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
-            <span>{isSyncing ? 'Reconciling...' : 'Sync Feeds'}</span>
+            <span className="hidden xl:inline">{isSyncing ? 'Syncing...' : 'Sync Feeds'}</span>
           </button>
 
+          {/* Notifications */}
           <button
             onClick={onOpenNotifications}
             className="relative p-2 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
-            title="Notifications & Meeting Alerts"
+            title="Meeting notifications & deadline alerts"
           >
             <Bell className="w-4 h-4" />
             {unreadNotificationsCount > 0 && (
@@ -142,38 +181,49 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
+          {/* + New Meeting */}
           <button
             onClick={onOpenNewMeeting}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm transition-colors cursor-pointer shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New Meeting</span>
+            <span className="hidden sm:inline">New Meeting</span>
+            <span className="sm:hidden">New</span>
           </button>
         </div>
       </div>
 
-      {/* Mobile navigation tab strip */}
-      <div className="lg:hidden flex items-center overflow-x-auto px-4 py-2 border-t border-neutral-800/80 gap-3 text-xs bg-neutral-900/60 no-scrollbar">
-        {navLinks.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => onSelectTab(item.id)}
-            className={`whitespace-nowrap px-2.5 py-1 rounded transition-colors ${
-              currentTab === item.id
-                ? 'bg-neutral-800 text-neutral-100 font-medium'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-        <button
-          onClick={onOpenEmailGateway}
-          className="whitespace-nowrap px-2.5 py-1 rounded text-neutral-300 hover:text-neutral-100 bg-neutral-800/80 border border-neutral-700 flex items-center gap-1"
-        >
-          <Mail className="w-3 h-3 text-indigo-400" />
-          Email Gateways
-        </button>
+      {/* Mobile Navigation Bar: Fixed 5-column grid that 100% fits within any viewport without horizontal scroll! */}
+      <div className="md:hidden border-t border-neutral-800 bg-neutral-950/95 px-2 py-1.5">
+        <div className="grid grid-cols-5 gap-1 text-center">
+          {navLinks.map((item) => {
+            const isActive = currentTab === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSelectTab(item.id)}
+                className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg transition-colors cursor-pointer relative ${
+                  isActive
+                    ? 'bg-neutral-850 text-indigo-400 font-semibold'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                }`}
+              >
+                <div className="relative">
+                  <Icon className="w-4 h-4" />
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="absolute -top-1 -right-2 w-3.5 h-3.5 bg-amber-500 text-black text-[9px] font-mono font-bold rounded-full flex items-center justify-center">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] tracking-tight mt-0.5 leading-tight truncate w-full">
+                  {item.mobileLabel}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </header>
   );
