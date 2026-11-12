@@ -1,0 +1,6 @@
+{
+  "name": "OmniCal Enterprise - Multi-Company Master Schedule",
+  "description": "Unified multi-company calendar management with isolated profiles, master schedule sync, pre/post-meeting notes delivery, client tier engagement tracking, and compliance analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
