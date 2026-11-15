@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Download,
   Search,
-  Filter,
   Users,
-  CheckCircle2,
-  XCircle,
   FileText,
   Building2,
   ListTodo,
   TrendingUp,
-  Percent,
+  ChevronDown,
+  ChevronRight,
+  Layers,
+  Table as TableIcon,
+  CalendarClock,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   formatDateLabel,
@@ -25,76 +27,303 @@ interface HistoricalLogsViewProps {
 }
 
 export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMeeting }) => {
-  const { meetings, companies, clients, selectedCompanyId, setSelectedCompanyId } = useApp();
+  const { meetings, companies, clients, selectedCompanyId } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterCompanyId, setFilterCompanyId] = useState<string>(
+    selectedCompanyId !== 'ALL' ? selectedCompanyId : 'ALL'
+  );
   const [filterType, setFilterType] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [viewMode, setViewMode] = useState<'company' | 'table'>('company');
+  const [collapsedCompanies, setCollapsedCompanies] = useState<Record<string, boolean>>({});
 
-  const companyMap = new Map(companies.map((c) => [c.id, c]));
-  const clientMap = new Map(clients.map((cl) => [cl.id, cl]));
+  // Sync local filter when global company isolation changes
+  useEffect(() => {
+    setFilterCompanyId(selectedCompanyId !== 'ALL' ? selectedCompanyId : 'ALL');
+  }, [selectedCompanyId]);
 
-  // Historical or all meetings filtered by company
-  const relevantMeetings = meetings.filter((m) => {
-    if (selectedCompanyId !== 'ALL' && m.companyId !== selectedCompanyId) return false;
-    return true;
-  });
+  const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
+  const clientMap = useMemo(() => new Map(clients.map((cl) => [cl.id, cl])), [clients]);
 
-  // Calculate attendance statistics across meetings
-  let totalAttendeesCount = 0;
-  let attendedCount = 0;
-  let tierATotalAttendees = 0;
-  let tierAAttendedCount = 0;
-  let totalActionItems = 0;
-  let completedActionItems = 0;
-
-  relevantMeetings.forEach((m) => {
-    const client = clientMap.get(m.clientId);
-    m.attendees.forEach((att) => {
-      totalAttendeesCount++;
-      if (att.status === 'attended') {
-        attendedCount++;
-      }
-      if (client?.tier === 'A') {
-        tierATotalAttendees++;
-        if (att.status === 'attended') {
-          tierAAttendedCount++;
-        }
-      }
+  // Meetings filtered by selected company
+  const relevantMeetings = useMemo(() => {
+    return meetings.filter((m) => {
+      if (filterCompanyId !== 'ALL' && m.companyId !== filterCompanyId) return false;
+      return true;
     });
+  }, [meetings, filterCompanyId]);
 
-    m.notes.postMeeting.actionItems.forEach((act) => {
-      totalActionItems++;
-      if (act.completed) completedActionItems++;
-    });
-  });
-
-  const overallAttendanceRate =
-    totalAttendeesCount > 0 ? Math.round((attendedCount / totalAttendeesCount) * 100) : 0;
-  const tierAAttendanceRate =
-    tierATotalAttendees > 0 ? Math.round((tierAAttendedCount / tierATotalAttendees) * 100) : 0;
-  const actionCompletionRate =
-    totalActionItems > 0 ? Math.round((completedActionItems / totalActionItems) * 100) : 0;
-
-  // Search and filter meetings
-  const displayedMeetings = relevantMeetings.filter((m) => {
-    const client = clientMap.get(m.clientId);
-    const comp = companyMap.get(m.companyId);
+  // Search, type, and status filtering, sorted newest first
+  const displayedMeetings = useMemo(() => {
     const q = searchQuery.toLowerCase();
+    return relevantMeetings
+      .filter((m) => {
+        const client = clientMap.get(m.clientId);
+        const comp = companyMap.get(m.companyId);
 
-    const matchesSearch =
-      m.title.toLowerCase().includes(q) ||
-      m.location.toLowerCase().includes(q) ||
-      (client && client.name.toLowerCase().includes(q)) ||
-      (comp && comp.name.toLowerCase().includes(q));
+        const matchesSearch =
+          !q ||
+          m.title.toLowerCase().includes(q) ||
+          m.location.toLowerCase().includes(q) ||
+          (client && client.name.toLowerCase().includes(q)) ||
+          (comp && comp.name.toLowerCase().includes(q));
 
-    const matchesType = filterType === 'ALL' || m.meetingType === filterType;
+        const matchesType = filterType === 'ALL' || m.meetingType === filterType;
+        const matchesStatus = filterStatus === 'ALL' || m.status === filterStatus;
 
-    return matchesSearch && matchesType;
-  });
+        return matchesSearch && matchesType && matchesStatus;
+      })
+      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  }, [relevantMeetings, searchQuery, filterType, filterStatus, clientMap, companyMap]);
+
+  // Calculate attendance statistics across displayed meetings
+  const stats = useMemo(() => {
+    let totalAttendeesCount = 0;
+    let attendedCount = 0;
+    let tierATotalAttendees = 0;
+    let tierAAttendedCount = 0;
+    let totalActionItems = 0;
+    let completedActionItems = 0;
+
+    displayedMeetings.forEach((m) => {
+      const client = clientMap.get(m.clientId);
+      m.attendees.forEach((att) => {
+        totalAttendeesCount++;
+        if (att.status === 'attended') {
+          attendedCount++;
+        }
+        if (client?.tier === 'A') {
+          tierATotalAttendees++;
+          if (att.status === 'attended') {
+            tierAAttendedCount++;
+          }
+        }
+      });
+
+      m.notes.postMeeting.actionItems.forEach((act) => {
+        totalActionItems++;
+        if (act.completed) completedActionItems++;
+      });
+    });
+
+    return {
+      totalAttendeesCount,
+      attendedCount,
+      overallAttendanceRate:
+        totalAttendeesCount > 0 ? Math.round((attendedCount / totalAttendeesCount) * 100) : 0,
+      tierAAttendanceRate:
+        tierATotalAttendees > 0 ? Math.round((tierAAttendedCount / tierATotalAttendees) * 100) : 0,
+      totalActionItems,
+      completedActionItems,
+      actionCompletionRate:
+        totalActionItems > 0 ? Math.round((completedActionItems / totalActionItems) * 100) : 0,
+    };
+  }, [displayedMeetings, clientMap]);
+
+  // Group displayed meetings by Company
+  const companyGroups = useMemo(() => {
+    const targetCompanies =
+      filterCompanyId !== 'ALL'
+        ? companies.filter((c) => c.id === filterCompanyId)
+        : companies;
+
+    return targetCompanies
+      .map((comp) => {
+        const compMeetings = displayedMeetings.filter((m) => m.companyId === comp.id);
+        let present = 0;
+        let total = 0;
+        let completed = 0;
+        let scheduled = 0;
+        let syncedCount = 0;
+
+        compMeetings.forEach((m) => {
+          if (m.status === 'completed') completed++;
+          if (m.status === 'scheduled') scheduled++;
+          if (m.notes.preMeeting.syncedToAccount || m.notes.postMeeting.syncedToAccount) {
+            syncedCount++;
+          }
+          m.attendees.forEach((a) => {
+            total++;
+            if (a.status === 'attended') present++;
+          });
+        });
+
+        const attendanceRate = total > 0 ? Math.round((present / total) * 100) : 0;
+
+        return {
+          company: comp,
+          meetings: compMeetings,
+          completed,
+          scheduled,
+          syncedCount,
+          attendanceRate,
+        };
+      })
+      .filter((group) => filterCompanyId !== 'ALL' || group.meetings.length > 0);
+  }, [companies, displayedMeetings, filterCompanyId]);
+
+  // Raw meeting counts per company (for dropdown labels)
+  const rawCountsByCompany = useMemo(() => {
+    const counts: Record<string, number> = {};
+    meetings.forEach((m) => {
+      counts[m.companyId] = (counts[m.companyId] || 0) + 1;
+    });
+    return counts;
+  }, [meetings]);
+
+  const toggleCompanyCollapse = (companyId: string) => {
+    setCollapsedCompanies((prev) => ({
+      ...prev,
+      [companyId]: !prev[companyId],
+    }));
+  };
+
+  const setAllCollapsed = (collapsed: boolean) => {
+    const next: Record<string, boolean> = {};
+    companyGroups.forEach((g) => {
+      next[g.company.id] = collapsed;
+    });
+    setCollapsedCompanies(next);
+  };
 
   const handleExportCsv = () => {
     const csvData = generateLogsCsv(displayedMeetings, companies, clients);
-    triggerFileDownload(csvData, 'omnical-historical-meeting-logs.csv', 'text/csv');
+    const activeComp = filterCompanyId !== 'ALL' ? companyMap.get(filterCompanyId) : null;
+    const filename = activeComp
+      ? `omnical-${activeComp.slug}-meeting-logs.csv`
+      : 'omnical-historical-meeting-logs.csv';
+    triggerFileDownload(csvData, filename, 'text/csv');
+  };
+
+  const renderMeetingRow = (m: (typeof displayedMeetings)[number], showCompanyColumn: boolean) => {
+    const comp = companyMap.get(m.companyId);
+    const cli = clientMap.get(m.clientId);
+    const present = m.attendees.filter((a) => a.status === 'attended').length;
+    const total = m.attendees.length;
+    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+
+    return (
+      <tr key={m.id} className="hover:bg-neutral-850/50 transition-colors">
+        {/* Date & Time */}
+        <td className="py-3 px-4 font-mono tabular-nums text-neutral-400 whitespace-nowrap">
+          <div className="text-neutral-200 font-medium">{formatDateLabel(m.startTime)}</div>
+          <div className="text-[11px] text-neutral-500">
+            {formatTimeRange(m.startTime, m.endTime)}
+          </div>
+        </td>
+
+        {/* Title & Client */}
+        <td className="py-3 px-4">
+          <div
+            onClick={() => onOpenMeeting(m.id)}
+            className="font-medium text-neutral-100 hover:text-indigo-400 cursor-pointer transition-colors"
+          >
+            {m.title}
+          </div>
+          <div className="text-[11px] text-neutral-400 mt-0.5">
+            {cli?.name || 'Client'} · {m.meetingType}
+          </div>
+        </td>
+
+        {/* Company Profile (only in flat table mode) */}
+        {showCompanyColumn && (
+          <td className="py-3 px-4 whitespace-nowrap">
+            <button
+              onClick={() => setFilterCompanyId(m.companyId)}
+              className="flex items-center gap-1.5 text-neutral-300 hover:text-indigo-300 cursor-pointer transition-colors"
+              title={`Filter logs to ${comp?.name}`}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: comp?.accentHex || '#6366F1' }}
+              />
+              <span>{comp?.name}</span>
+            </button>
+          </td>
+        )}
+
+        {/* Status */}
+        <td className="py-3 px-4 text-center whitespace-nowrap">
+          <span
+            className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-semibold border ${
+              m.status === 'completed'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : m.status === 'cancelled'
+                ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                : 'bg-sky-500/10 text-sky-300 border-sky-500/20'
+            }`}
+          >
+            {m.status}
+          </span>
+        </td>
+
+        {/* Client Tier */}
+        <td className="py-3 px-4 text-center">
+          {cli?.tier ? (
+            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+              Tier {cli.tier}
+            </span>
+          ) : (
+            <span className="text-neutral-500">-</span>
+          )}
+        </td>
+
+        {/* Attendance Quorum */}
+        <td className="py-3 px-4 text-center font-mono tabular-nums">
+          <span
+            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+              rate >= 80
+                ? 'text-emerald-400 bg-emerald-500/10'
+                : 'text-amber-400 bg-amber-500/10'
+            }`}
+          >
+            {rate}% ({present}/{total})
+          </span>
+        </td>
+
+        {/* Notes Sync Status */}
+        <td className="py-3 px-4 text-center">
+          <div className="flex items-center justify-center gap-2 text-[11px]">
+            <span
+              title={
+                m.notes.preMeeting.syncedToAccount
+                  ? 'Pre-meeting brief synced to account'
+                  : 'Pre-meeting not synced'
+              }
+              className={
+                m.notes.preMeeting.syncedToAccount ? 'text-emerald-400' : 'text-neutral-600'
+              }
+            >
+              Pre
+            </span>
+            <span>/</span>
+            <span
+              title={
+                m.notes.postMeeting.syncedToAccount
+                  ? 'Post-meeting notes synced to account'
+                  : 'Post-meeting not synced'
+              }
+              className={
+                m.notes.postMeeting.syncedToAccount ? 'text-emerald-400' : 'text-neutral-600'
+              }
+            >
+              Post
+            </span>
+          </div>
+        </td>
+
+        {/* Actions */}
+        <td className="py-3 px-4 text-right whitespace-nowrap">
+          <button
+            onClick={() => onOpenMeeting(m.id)}
+            className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded text-xs font-medium border border-neutral-700 transition-colors cursor-pointer"
+          >
+            View Dossier
+          </button>
+        </td>
+      </tr>
+    );
   };
 
   return (
@@ -108,15 +337,15 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
             <Users className="w-4 h-4 text-neutral-500" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono tabular-nums text-neutral-100 flex items-baseline gap-2">
-            <span>{overallAttendanceRate}%</span>
+            <span>{stats.overallAttendanceRate}%</span>
             <span className="text-xs text-neutral-400 font-sans font-normal">
-              ({attendedCount}/{totalAttendeesCount} present)
+              ({stats.attendedCount}/{stats.totalAttendeesCount} present)
             </span>
           </div>
           <div className="mt-2 w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
             <div
               className="bg-emerald-500 h-full rounded-full transition-all"
-              style={{ width: `${overallAttendanceRate}%` }}
+              style={{ width: `${stats.overallAttendanceRate}%` }}
             />
           </div>
         </div>
@@ -128,13 +357,13 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
             <TrendingUp className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono tabular-nums text-indigo-300 flex items-baseline gap-2">
-            <span>{tierAAttendanceRate}%</span>
+            <span>{stats.tierAAttendanceRate}%</span>
             <span className="text-xs text-neutral-400 font-sans font-normal">High Quorum</span>
           </div>
           <div className="mt-2 w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
             <div
               className="bg-indigo-500 h-full rounded-full transition-all"
-              style={{ width: `${tierAAttendanceRate}%` }}
+              style={{ width: `${stats.tierAAttendanceRate}%` }}
             />
           </div>
         </div>
@@ -142,14 +371,20 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
         {/* Metric 3 */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-xs text-neutral-400">
-            <span>Historical Sessions Logged</span>
+            <span>
+              {filterCompanyId === 'ALL'
+                ? 'Meetings Logged'
+                : `${companyMap.get(filterCompanyId)?.name || 'Company'} Meetings`}
+            </span>
             <FileText className="w-4 h-4 text-neutral-500" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono tabular-nums text-neutral-100">
-            {relevantMeetings.length}
+            {displayedMeetings.length}
           </div>
           <div className="mt-2 text-xs text-neutral-500">
-            Across {companies.length} secure company partitions
+            {filterCompanyId === 'ALL'
+              ? `Across ${companyGroups.length} active company partitions`
+              : 'Filtered to selected company partition'}
           </div>
         </div>
 
@@ -160,203 +395,296 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
             <ListTodo className="w-4 h-4 text-neutral-500" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono tabular-nums text-neutral-100 flex items-baseline gap-2">
-            <span>{actionCompletionRate}%</span>
+            <span>{stats.actionCompletionRate}%</span>
             <span className="text-xs text-neutral-400 font-sans font-normal">
-              ({completedActionItems}/{totalActionItems} resolved)
+              ({stats.completedActionItems}/{stats.totalActionItems} resolved)
             </span>
           </div>
           <div className="mt-2 w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
             <div
               className="bg-sky-500 h-full rounded-full transition-all"
-              style={{ width: `${actionCompletionRate}%` }}
+              style={{ width: `${stats.actionCompletionRate}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* Search and Table Filters Header */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-3.5 rounded-xl">
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+      {/* Search, Company Selector & View Mode Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-3.5 rounded-xl">
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           {/* Search */}
-          <div className="relative w-full sm:w-72">
+          <div className="relative w-full sm:w-60">
             <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search meetings, attendees, notes..."
+              placeholder="Search meetings, clients, company..."
               className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-hidden focus:border-indigo-500"
             />
+          </div>
+
+          {/* Company-Wise Filter Dropdown */}
+          <div className="flex items-center gap-1.5 bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5">
+            <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <select
+              value={filterCompanyId}
+              onChange={(e) => setFilterCompanyId(e.target.value)}
+              className="bg-transparent text-xs text-neutral-200 focus:outline-hidden cursor-pointer pr-1"
+              title="Filter meetings by Company"
+            >
+              <option value="ALL" className="bg-neutral-900">
+                All Companies ({meetings.length})
+              </option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id} className="bg-neutral-900">
+                  {c.name} ({rawCountsByCompany[c.id] || 0})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Meeting Type filter */}
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-neutral-300 focus:outline-hidden"
+            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-neutral-300 focus:outline-hidden cursor-pointer"
           >
             <option value="ALL">All Meeting Types</option>
             <option value="Quarterly Review">Quarterly Review</option>
             <option value="Monthly Update">Monthly Update</option>
             <option value="Executive Follow-up">Executive Follow-up</option>
             <option value="Operational Check-in">Operational Check-in</option>
+            <option value="Strategy Alignment">Strategy Alignment</option>
+            <option value="Annual Health Check">Annual Health Check</option>
+          </select>
+
+          {/* Status filter */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-neutral-300 focus:outline-hidden cursor-pointer"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2">
+        {/* Right Controls: View Switcher + Export */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* View Mode Toggle: Company-Wise vs Flat Table */}
+          <div className="flex items-center gap-0.5 bg-neutral-950 border border-neutral-800 p-0.5 rounded-lg text-xs">
+            <button
+              onClick={() => setViewMode('company')}
+              className={`px-2.5 py-1 rounded flex items-center gap-1.5 transition-colors cursor-pointer ${
+                viewMode === 'company'
+                  ? 'bg-indigo-600 text-white font-medium'
+                  : 'text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="Group meetings by Company Profile"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Company-Wise</span>
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-2.5 py-1 rounded flex items-center gap-1.5 transition-colors cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-indigo-600 text-white font-medium'
+                  : 'text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="View all meetings in a single flat table"
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>All Logs Table</span>
+            </button>
+          </div>
+
+          {viewMode === 'company' && companyGroups.length > 1 && (
+            <div className="flex items-center gap-1 text-[11px]">
+              <button
+                onClick={() => setAllCollapsed(false)}
+                className="px-2 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg border border-neutral-700 cursor-pointer"
+              >
+                Expand All
+              </button>
+              <button
+                onClick={() => setAllCollapsed(true)}
+                className="px-2 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg border border-neutral-700 cursor-pointer"
+              >
+                Collapse All
+              </button>
+            </div>
+          )}
+
           <button
             onClick={handleExportCsv}
             className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-lg border border-neutral-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5 text-neutral-400" />
-            Export Logs (CSV)
+            Export CSV
           </button>
         </div>
       </div>
 
-      {/* Historical Logs High-Density Grid */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-neutral-300">
-            <thead className="bg-neutral-950 text-neutral-400 font-semibold border-b border-neutral-800">
-              <tr>
-                <th className="py-3 px-4">Date & Time</th>
-                <th className="py-3 px-4">Session Title & Client</th>
-                <th className="py-3 px-4">Company Profile</th>
-                <th className="py-3 px-4 text-center">Client Tier</th>
-                <th className="py-3 px-4 text-center">Attendance Status</th>
-                <th className="py-3 px-4 text-center">Notes Synced</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800/80">
-              {displayedMeetings.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-neutral-500">
-                    No historical logs matching filter.
-                  </td>
-                </tr>
-              ) : (
-                displayedMeetings.map((m) => {
-                  const comp = companyMap.get(m.companyId);
-                  const cli = clientMap.get(m.clientId);
-                  const present = m.attendees.filter((a) => a.status === 'attended').length;
-                  const total = m.attendees.length;
-                  const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+      {/* ======================================================== */}
+      {/* VIEW 1: COMPANY-WISE GROUPED MEETING LOGS                */}
+      {/* ======================================================== */}
+      {viewMode === 'company' && (
+        <div className="space-y-4">
+          {companyGroups.length === 0 ? (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-12 text-center text-neutral-500 text-xs">
+              No company meetings matching current filters.
+            </div>
+          ) : (
+            companyGroups.map((group) => {
+              const isCollapsed = !!collapsedCompanies[group.company.id];
+              const isFocused = filterCompanyId === group.company.id;
 
-                  return (
-                    <tr key={m.id} className="hover:bg-neutral-850/50 transition-colors">
-                      {/* Date & Time */}
-                      <td className="py-3 px-4 font-mono tabular-nums text-neutral-400 whitespace-nowrap">
-                        <div className="text-neutral-200 font-medium">
-                          {formatDateLabel(m.startTime)}
-                        </div>
-                        <div className="text-[11px] text-neutral-500">
-                          {formatTimeRange(m.startTime, m.endTime)}
-                        </div>
-                      </td>
-
-                      {/* Title & Client */}
-                      <td className="py-3 px-4">
-                        <div
-                          onClick={() => onOpenMeeting(m.id)}
-                          className="font-medium text-neutral-100 hover:text-indigo-400 cursor-pointer transition-colors"
-                        >
-                          {m.title}
-                        </div>
-                        <div className="text-[11px] text-neutral-400 mt-0.5">
-                          {cli?.name || 'Client'} · {m.meetingType}
-                        </div>
-                      </td>
-
-                      {/* Company Profile */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="flex items-center gap-1.5 text-neutral-300">
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: comp?.accentHex || '#6366F1' }}
-                          />
-                          {comp?.name}
-                        </span>
-                      </td>
-
-                      {/* Client Tier */}
-                      <td className="py-3 px-4 text-center">
-                        {cli?.tier ? (
-                          <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                            Tier {cli.tier}
-                          </span>
+              return (
+                <div
+                  key={group.company.id}
+                  className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-xs"
+                >
+                  {/* Company Group Header */}
+                  <div className="p-4 bg-neutral-950/70 border-b border-neutral-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div
+                      onClick={() => toggleCompanyCollapse(group.company.id)}
+                      className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
+                    >
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-neutral-800 text-neutral-400 shrink-0"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4" />
                         ) : (
-                          <span className="text-neutral-500">-</span>
+                          <ChevronDown className="w-4 h-4" />
                         )}
-                      </td>
+                      </button>
 
-                      {/* Attendance Quorum */}
-                      <td className="py-3 px-4 text-center font-mono tabular-nums">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            rate >= 80
-                              ? 'text-emerald-400 bg-emerald-500/10'
-                              : 'text-amber-400 bg-amber-500/10'
-                          }`}
-                        >
-                          {rate}% ({present}/{total})
-                        </span>
-                      </td>
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0 ring-2 ring-neutral-800"
+                        style={{ backgroundColor: group.company.accentHex }}
+                      />
 
-                      {/* Notes Sync Status */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2 text-[11px]">
-                          <span
-                            title={
-                              m.notes.preMeeting.syncedToAccount
-                                ? 'Pre-meeting brief synced to account'
-                                : 'Pre-meeting not synced'
-                            }
-                            className={
-                              m.notes.preMeeting.syncedToAccount
-                                ? 'text-emerald-400'
-                                : 'text-neutral-600'
-                            }
-                          >
-                            Pre
-                          </span>
-                          <span>/</span>
-                          <span
-                            title={
-                              m.notes.postMeeting.syncedToAccount
-                                ? 'Post-meeting notes synced to account'
-                                : 'Post-meeting not synced'
-                            }
-                            className={
-                              m.notes.postMeeting.syncedToAccount
-                                ? 'text-emerald-400'
-                                : 'text-neutral-600'
-                            }
-                          >
-                            Post
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-bold text-neutral-100 truncate">
+                            {group.company.name}
+                          </h3>
+                          <span className="text-[10px] font-mono text-neutral-500 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                            {group.company.encryptionPartition}
                           </span>
                         </div>
-                      </td>
+                        <div className="text-[11px] text-neutral-400 mt-0.5 truncate">
+                          Lead: {group.company.accountExecutive.name} · {group.company.timezone}
+                        </div>
+                      </div>
+                    </div>
 
-                      {/* Actions */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => onOpenMeeting(m.id)}
-                          className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded text-xs font-medium border border-neutral-700 transition-colors cursor-pointer"
-                        >
-                          View Dossier
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                    {/* Company Stats Pills & Quick Focus */}
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono shrink-0">
+                      <span className="px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 flex items-center gap-1">
+                        <CalendarClock className="w-3 h-3 text-indigo-400" />
+                        {group.meetings.length} total
+                      </span>
+                      <span className="px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        {group.completed} done
+                      </span>
+                      <span className="px-2 py-1 rounded bg-sky-500/10 border border-sky-500/20 text-sky-300">
+                        {group.scheduled} upcoming
+                      </span>
+                      <span className="px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        {group.attendanceRate}% attend
+                      </span>
+
+                      <button
+                        onClick={() =>
+                          setFilterCompanyId(isFocused ? 'ALL' : group.company.id)
+                        }
+                        className={`px-2.5 py-1 rounded text-[11px] font-sans font-medium border transition-colors cursor-pointer ${
+                          isFocused
+                            ? 'bg-indigo-600 text-white border-indigo-500'
+                            : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-neutral-700'
+                        }`}
+                      >
+                        {isFocused ? 'Show All Companies' : 'Focus Company'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Company's Meetings Table */}
+                  {!isCollapsed && (
+                    <div className="overflow-x-auto">
+                      {group.meetings.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-neutral-500">
+                          No meetings logged for {group.company.name} matching current filters.
+                        </div>
+                      ) : (
+                        <table className="w-full text-left text-xs text-neutral-300">
+                          <thead className="bg-neutral-950/40 text-neutral-400 font-semibold border-b border-neutral-800">
+                            <tr>
+                              <th className="py-2.5 px-4">Date & Time</th>
+                              <th className="py-2.5 px-4">Session Title & Client</th>
+                              <th className="py-2.5 px-4 text-center">Status</th>
+                              <th className="py-2.5 px-4 text-center">Tier</th>
+                              <th className="py-2.5 px-4 text-center">Attendance</th>
+                              <th className="py-2.5 px-4 text-center">Notes Synced</th>
+                              <th className="py-2.5 px-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-800/80">
+                            {group.meetings.map((m) => renderMeetingRow(m, false))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
-      </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* VIEW 2: FLAT TABLE VIEW                                  */}
+      {/* ======================================================== */}
+      {viewMode === 'table' && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-neutral-300">
+              <thead className="bg-neutral-950 text-neutral-400 font-semibold border-b border-neutral-800">
+                <tr>
+                  <th className="py-3 px-4">Date & Time</th>
+                  <th className="py-3 px-4">Session Title & Client</th>
+                  <th className="py-3 px-4">Company Profile</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-center">Client Tier</th>
+                  <th className="py-3 px-4 text-center">Attendance Status</th>
+                  <th className="py-3 px-4 text-center">Notes Synced</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800/80">
+                {displayedMeetings.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-neutral-500">
+                      No historical logs matching filter.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedMeetings.map((m) => renderMeetingRow(m, true))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

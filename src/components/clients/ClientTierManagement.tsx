@@ -22,6 +22,7 @@ import {
   getDeadlineBadge,
   formatDateLabel,
 } from '../../utils/calendarUtils';
+import { AddClientModal } from './AddClientModal';
 
 interface ClientTierManagementProps {
   onScheduleMeetingForClient?: (clientId: string, companyId: string) => void;
@@ -42,12 +43,17 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterCompanyId, setFilterCompanyId] = useState<string>('ALL');
   const [selectedClientForEdit, setSelectedClientForEdit] = useState<Client | null>(null);
+  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
 
   const companyMap = new Map(companies.map((c) => [c.id, c]));
 
-  // Filter clients by search query
+  // Filter clients by search query and company
   const displayedClients = filteredClients.filter((client) => {
+    if (filterCompanyId !== 'ALL' && client.companyId !== filterCompanyId) {
+      return false;
+    }
     const query = searchQuery.toLowerCase();
     const comp = companyMap.get(client.companyId);
     return (
@@ -96,8 +102,15 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
             </p>
           </div>
 
-          {/* Automated Reminders Trigger Action */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Automated Reminders & Add Client Actions */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsAddClientOpen(true)}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Client
+            </button>
             <button
               onClick={() => runDeadlineScan()}
               className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
@@ -221,25 +234,40 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
       </div>
 
       {/* Search and Filters Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-xl">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by client, industry, or contact..."
-            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-hidden focus:border-indigo-500"
-          />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-xl">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by client, industry, or contact..."
+              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-hidden focus:border-indigo-500"
+            />
+          </div>
+
+          <select
+            value={filterCompanyId}
+            onChange={(e) => setFilterCompanyId(e.target.value)}
+            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-neutral-200 focus:outline-hidden focus:border-indigo-500"
+          >
+            <option value="ALL">All Companies ({companies.length})</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-neutral-400">Filter by Tier:</span>
           {(['ALL', 'A', 'B', 'C'] as const).map((tier) => (
             <button
               key={tier}
               onClick={() => setSelectedTier(tier)}
-              className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${
+              className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors cursor-pointer ${
                 selectedTier === tier
                   ? 'bg-indigo-600 text-white'
                   : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
@@ -476,6 +504,12 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
           </div>
         </div>
       )}
+      {/* Add Client Modal */}
+      <AddClientModal
+        isOpen={isAddClientOpen}
+        onClose={() => setIsAddClientOpen(false)}
+        defaultCompanyId={filterCompanyId !== 'ALL' ? filterCompanyId : undefined}
+      />
     </div>
   );
 };

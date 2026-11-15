@@ -12,6 +12,8 @@ import {
   Trash2,
   Lock,
 } from 'lucide-react';
+import { AddClientModal } from '../clients/AddClientModal';
+import { formatDateIso } from '../../utils/calendarUtils';
 
 interface NewMeetingModalProps {
   isOpen: boolean;
@@ -36,17 +38,25 @@ export const NewMeetingModal: React.FC<NewMeetingModalProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [meetingType, setMeetingType] = useState<MeetingType>('Monthly Update');
-  const [date, setDate] = useState(initialDate || '2026-09-06');
+  const [date, setDate] = useState(() => initialDate || formatDateIso(new Date()));
   const [startTime, setStartTime] = useState('10:00');
   const [endTime, setEndTime] = useState('11:00');
   const [location, setLocation] = useState('Google Meet · meet.google.com/omni-cadence');
   const [agenda, setAgenda] = useState('');
+  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
 
   useEffect(() => {
-    if (initialDate) {
-      setDate(initialDate);
+    if (isOpen) {
+      if (initialDate) {
+        setDate(initialDate);
+      } else {
+        setDate(formatDateIso(new Date()));
+      }
+      if (selectedCompanyId !== 'ALL') {
+        setCompanyId(selectedCompanyId);
+      }
     }
-  }, [initialDate]);
+  }, [isOpen, initialDate, selectedCompanyId]);
 
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [newAttName, setNewAttName] = useState('');
@@ -116,8 +126,8 @@ export const NewMeetingModal: React.FC<NewMeetingModalProps> = ({
     e.preventDefault();
     if (!title.trim() || !companyId || !clientId) return;
 
-    const startIso = `${date}T${startTime}:00-07:00`;
-    const endIso = `${date}T${endTime}:00-07:00`;
+    const startIso = `${date}T${startTime}:00`;
+    const endIso = `${date}T${endTime}:00`;
 
     addMeeting({
       companyId,
@@ -203,22 +213,37 @@ export const NewMeetingModal: React.FC<NewMeetingModalProps> = ({
             <div>
               <label className="block text-neutral-300 font-medium mb-1 flex items-center justify-between">
                 <span>Client Account</span>
-                {selectedClient && (
-                  <span className="font-mono text-[11px] text-indigo-400 font-semibold">
-                    Tier {selectedClient.tier} Client
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {selectedClient && (
+                    <span className="font-mono text-[11px] text-indigo-400 font-semibold">
+                      Tier {selectedClient.tier}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsAddClientOpen(true)}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add Client
+                  </button>
+                </div>
               </label>
               <select
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
+                required
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-neutral-200 focus:outline-hidden focus:border-indigo-500"
               >
-                {availableClients.map((cl) => (
-                  <option key={cl.id} value={cl.id}>
-                    {cl.name} (Tier {cl.tier})
-                  </option>
-                ))}
+                {availableClients.length === 0 ? (
+                  <option value="">No clients yet — click + Add Client</option>
+                ) : (
+                  availableClients.map((cl) => (
+                    <option key={cl.id} value={cl.id}>
+                      {cl.name} (Tier {cl.tier})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -404,6 +429,16 @@ export const NewMeetingModal: React.FC<NewMeetingModalProps> = ({
           </div>
         </form>
       </div>
+
+      <AddClientModal
+        isOpen={isAddClientOpen}
+        onClose={() => setIsAddClientOpen(false)}
+        defaultCompanyId={companyId}
+        onClientCreated={(created) => {
+          setCompanyId(created.companyId);
+          setClientId(created.id);
+        }}
+      />
     </div>
   );
 };

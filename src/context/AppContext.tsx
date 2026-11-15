@@ -45,7 +45,7 @@ interface AppContextType {
   setAttendeeStatus: (meetingId: string, attendeeId: string, status: AttendanceStatus) => void;
   
   // Client & Tier actions
-  addClient: (clientData: Omit<Client, 'id'>) => void;
+  addClient: (clientData: Omit<Client, 'id'>) => Client;
   updateClient: (id: string, updates: Partial<Client>) => void;
   dispatchMonthlyUpdate: (clientId: string) => void;
   recordQuarterlyReview: (clientId: string) => void;
@@ -58,7 +58,7 @@ interface AppContextType {
   triggerManualTestAlert: (type: '24h_advance' | 'pre_start' | 'tier_a_deadline') => void;
   
   // Company actions
-  addCompany: (comp: Omit<CompanyProfile, 'id' | 'syncStatus' | 'lastSyncedAt'>) => void;
+  addCompany: (comp: Omit<CompanyProfile, 'id' | 'syncStatus' | 'lastSyncedAt'>) => CompanyProfile;
   updateCompany: (id: string, updates: Partial<CompanyProfile>) => void;
 
   // Multi-calendar visibility controls (Google Calendar style checkboxes)
@@ -556,12 +556,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Add Client
-  const addClient = useCallback((clientData: Omit<Client, 'id'>) => {
+  const addClient = useCallback((clientData: Omit<Client, 'id'>): Client => {
     const newClient: Client = {
       ...clientData,
       id: `cli-${Date.now()}`,
     };
     setClients((prev) => [newClient, ...prev]);
+    return newClient;
   }, []);
 
   // Update Client
@@ -765,7 +766,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   // Company management
-  const addCompany = useCallback((comp: Omit<CompanyProfile, 'id' | 'syncStatus' | 'lastSyncedAt'>) => {
+  const addCompany = useCallback((comp: Omit<CompanyProfile, 'id' | 'syncStatus' | 'lastSyncedAt'>): CompanyProfile => {
     const newComp: CompanyProfile = {
       ...comp,
       id: `comp-${Date.now()}`,
@@ -773,6 +774,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastSyncedAt: new Date().toISOString(),
     };
     setCompanies((prev) => [...prev, newComp]);
+    setVisibleCalendarIds((prev) => (prev.includes(newComp.id) ? prev : [...prev, newComp.id]));
+    return newComp;
   }, []);
 
   const updateCompany = useCallback((id: string, updates: Partial<CompanyProfile>) => {

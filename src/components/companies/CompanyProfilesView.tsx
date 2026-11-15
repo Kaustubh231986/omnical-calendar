@@ -16,6 +16,7 @@ import {
   Mail,
 } from 'lucide-react';
 import { formatDateLabel } from '../../utils/calendarUtils';
+import { AddClientModal } from '../clients/AddClientModal';
 
 interface CompanyProfilesViewProps {
   onConfigureEmail?: (companyId: string) => void;
@@ -33,8 +34,9 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
   } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addClientCompanyId, setAddClientCompanyId] = useState<string | null>(null);
   const [newCompanyName, setNewCompanyName] = useState('');
-  const [newTimezone, setNewTimezone] = useState('America/New_York (EDT)');
+  const [newTimezone, setNewTimezone] = useState('GMT+05:30 (India Standard Time)');
   const [newExecutiveName, setNewExecutiveName] = useState('');
   const [newExecutiveEmail, setNewExecutiveEmail] = useState('');
 
@@ -90,13 +92,22 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Company Profile
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setAddClientCompanyId(selectedCompanyId !== 'ALL' ? selectedCompanyId : companies[0]?.id || '')}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Add Client
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Company Profile
+          </button>
+        </div>
       </div>
 
       {/* Company Cards Grid */}
@@ -211,6 +222,15 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
                   {isSelected ? 'Exit Isolated View' : `Isolate Calendar`}
                 </button>
 
+                <button
+                  onClick={() => setAddClientCompanyId(comp.id)}
+                  className="px-2.5 py-2 text-emerald-300 hover:text-white bg-neutral-800 hover:bg-emerald-600 rounded-lg border border-neutral-700 transition-colors cursor-pointer text-xs font-medium flex items-center gap-1"
+                  title={`Add new client under ${comp.name}`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Client
+                </button>
+
                 {onConfigureEmail && (
                   <button
                     onClick={() => onConfigureEmail(comp.id)}
@@ -263,6 +283,7 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
                   onChange={(e) => setNewTimezone(e.target.value)}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-neutral-200 focus:outline-hidden"
                 >
+                  <option value="GMT+05:30 (India Standard Time)">GMT+05:30 (India Standard Time)</option>
                   <option value="America/New_York (EDT)">America/New_York (EDT)</option>
                   <option value="America/Chicago (CDT)">America/Chicago (CDT)</option>
                   <option value="America/Los_Angeles (PDT)">America/Los_Angeles (PDT)</option>
@@ -318,6 +339,12 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
           </div>
         </div>
       )}
+      {/* Add Client Modal */}
+      <AddClientModal
+        isOpen={addClientCompanyId !== null}
+        onClose={() => setAddClientCompanyId(null)}
+        defaultCompanyId={addClientCompanyId || undefined}
+      />
     </div>
   );
 };
