@@ -35,6 +35,7 @@ export interface CompanyProfile {
   id: string;
   name: string;
   slug: string;
+  tier?: ClientTier;
   brandColor: string; // Tailwind color name (e.g. 'indigo', 'emerald', 'sky')
   accentHex: string;
   timezone: string;
@@ -70,6 +71,7 @@ export interface Client {
   name: string;
   tier: ClientTier;
   industry: string;
+  address?: string;
   contact: ClientContact;
   monthlyUpdateDeadline: string; // ISO date string: YYYY-MM-DD
   lastMonthlyUpdateSent: string | null;

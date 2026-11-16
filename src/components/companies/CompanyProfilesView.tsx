@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { CompanyProfile } from '../../types';
+import { CompanyProfile, ClientTier } from '../../types';
 import {
   Building2,
   Lock,
@@ -36,6 +36,7 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addClientCompanyId, setAddClientCompanyId] = useState<string | null>(null);
   const [newCompanyName, setNewCompanyName] = useState('');
+  const [newCompanyTier, setNewCompanyTier] = useState<ClientTier>('A');
   const [newTimezone, setNewTimezone] = useState('GMT+05:30 (India Standard Time)');
   const [newExecutiveName, setNewExecutiveName] = useState('');
   const [newExecutiveEmail, setNewExecutiveEmail] = useState('');
@@ -52,6 +53,7 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
     addCompany({
       name: newCompanyName.trim(),
       slug,
+      tier: newCompanyTier,
       brandColor: 'indigo',
       accentHex: '#6366F1',
       timezone: newTimezone,
@@ -70,6 +72,7 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
     });
 
     setNewCompanyName('');
+    setNewCompanyTier('A');
     setNewExecutiveName('');
     setNewExecutiveEmail('');
     setIsAddModalOpen(false);
@@ -142,10 +145,30 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
                     </div>
                   </div>
 
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Isolated
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <select
+                      value={comp.tier || 'A'}
+                      onChange={(e) =>
+                        updateCompany(comp.id, { tier: e.target.value as ClientTier })
+                      }
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border cursor-pointer focus:outline-hidden ${
+                        (comp.tier || 'A') === 'A'
+                          ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                          : comp.tier === 'B'
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          : 'bg-neutral-800 text-neutral-300 border-neutral-700'
+                      }`}
+                      title="Company engagement tier"
+                    >
+                      <option value="A" className="bg-neutral-900 text-neutral-200">Tier A</option>
+                      <option value="B" className="bg-neutral-900 text-neutral-200">Tier B</option>
+                      <option value="C" className="bg-neutral-900 text-neutral-200">Tier C</option>
+                    </select>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Isolated
+                    </span>
+                  </div>
                 </div>
 
                 {/* Security Partition & Key */}
@@ -274,6 +297,38 @@ export const CompanyProfilesView: React.FC<CompanyProfilesViewProps> = ({ onConf
                   placeholder="e.g. Cobalt Horizon Aerospace"
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-neutral-200 focus:outline-hidden focus:border-indigo-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-neutral-300 font-medium mb-1.5">
+                  Company Tier Category
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { tier: 'A', title: 'Tier A', sub: 'Priority · Monthly + QBR' },
+                    { tier: 'B', title: 'Tier B', sub: 'Growth · Bi-Monthly' },
+                    { tier: 'C', title: 'Tier C', sub: 'Standard · Quarterly' },
+                  ] as const).map((item) => {
+                    const active = newCompanyTier === item.tier;
+                    return (
+                      <button
+                        key={item.tier}
+                        type="button"
+                        onClick={() => setNewCompanyTier(item.tier)}
+                        className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                          active
+                            ? 'bg-indigo-600/20 border-indigo-500 text-neutral-100 ring-1 ring-indigo-500/40'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'
+                        }`}
+                      >
+                        <div className="font-mono font-bold text-xs">{item.title}</div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5 leading-tight">
+                          {item.sub}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div>

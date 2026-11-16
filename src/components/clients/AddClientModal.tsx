@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Client, ClientTier } from '../../types';
-import { X, Users, Building2, Calendar, Mail, Phone, DollarSign, FileText } from 'lucide-react';
+import { X, Users, Building2, Calendar, Mail, Phone, DollarSign, FileText, MapPin } from 'lucide-react';
 
 interface AddClientModalProps {
   isOpen: boolean;
@@ -37,6 +37,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
   const [name, setName] = useState('');
   const [tier, setTier] = useState<ClientTier>('A');
   const [industry, setIndustry] = useState('');
+  const [address, setAddress] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactTitle, setContactTitle] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -48,11 +49,16 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setCompanyId(resolveInitialCompany());
+      const resolvedCompId = resolveInitialCompany();
+      setCompanyId(resolvedCompId);
+      const matchedComp = companies.find((c) => c.id === resolvedCompId);
+      if (matchedComp?.tier) {
+        setTier(matchedComp.tier);
+      }
       setMonthlyUpdateDeadline(getOffsetDateIso(30));
       setQuarterlyReviewDeadline(getOffsetDateIso(90));
     }
-  }, [isOpen, defaultCompanyId, selectedCompanyId]);
+  }, [isOpen, defaultCompanyId, selectedCompanyId, companies]);
 
   if (!isOpen) return null;
 
@@ -65,6 +71,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
       name: name.trim(),
       tier,
       industry: industry.trim() || 'Enterprise Services',
+      address: address.trim() || undefined,
       contact: {
         name: contactName.trim() || name.trim(),
         title: contactTitle.trim() || 'Primary Stakeholder',
@@ -82,6 +89,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
 
     setName('');
     setIndustry('');
+    setAddress('');
     setContactName('');
     setContactTitle('');
     setContactEmail('');
@@ -133,12 +141,19 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
               <select
                 required
                 value={companyId}
-                onChange={(e) => setCompanyId(e.target.value)}
+                onChange={(e) => {
+                  const newCompId = e.target.value;
+                  setCompanyId(newCompId);
+                  const matchedComp = companies.find((c) => c.id === newCompId);
+                  if (matchedComp?.tier) {
+                    setTier(matchedComp.tier);
+                  }
+                }}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-neutral-200 focus:outline-hidden focus:border-indigo-500"
               >
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name} {c.tier ? `(Tier ${c.tier})` : ''}
                   </option>
                 ))}
               </select>
@@ -182,6 +197,21 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-neutral-200 focus:outline-hidden focus:border-indigo-500"
               />
             </div>
+          </div>
+
+          {/* Client Address */}
+          <div>
+            <label className="block text-neutral-300 font-medium mb-1 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+              Client Address
+            </label>
+            <textarea
+              rows={2}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="e.g. 603/604 Jasmine Kesar Garden CHS, Sector 18, Navi Mumbai / Pune"
+              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-neutral-200 focus:outline-hidden focus:border-indigo-500"
+            />
           </div>
 
           {/* Primary Contact Info */}

@@ -16,6 +16,7 @@ import {
   TrendingUp,
   FileCheck2,
   Plus,
+  MapPin,
 } from 'lucide-react';
 import {
   CURRENT_VIRTUAL_TIME,
@@ -60,6 +61,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
       client.name.toLowerCase().includes(query) ||
       client.industry.toLowerCase().includes(query) ||
       client.contact.name.toLowerCase().includes(query) ||
+      (client.address && client.address.toLowerCase().includes(query)) ||
       (comp && comp.name.toLowerCase().includes(query))
     );
   });
@@ -320,6 +322,12 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                   <div className="text-xs text-neutral-400 mt-0.5">
                     {client.industry} · ACV: ${client.annualContractValue.toLocaleString()}
                   </div>
+                  {client.address && (
+                    <div className="text-[11px] text-neutral-400 mt-1 flex items-start gap-1">
+                      <MapPin className="w-3 h-3 text-indigo-400 shrink-0 mt-0.5" />
+                      <span>{client.address}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Health Score Gauge */}
@@ -481,6 +489,22 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                   })
                 }
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs font-mono text-neutral-200"
+              />
+            </div>
+
+            <div>
+              <label className="block text-neutral-300 font-medium mb-1">Client Address</label>
+              <textarea
+                rows={2}
+                value={selectedClientForEdit.address || ''}
+                onChange={(e) =>
+                  setSelectedClientForEdit({
+                    ...selectedClientForEdit,
+                    address: e.target.value,
+                  })
+                }
+                placeholder="Enter client office / billing address..."
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs text-neutral-200"
               />
             </div>
 
