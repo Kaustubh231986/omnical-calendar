@@ -1,27 +1,30 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Client, ClientTier } from '../../types';
+import { Client } from '../../types';
 import {
-  Users,
   AlertTriangle,
   Clock,
   CheckCircle2,
   Calendar,
   Send,
   Sparkles,
-  ShieldAlert,
   Search,
   Building2,
-  Award,
-  TrendingUp,
   FileCheck2,
   Plus,
   MapPin,
+  Pencil,
+  Trash2,
+  Briefcase,
+  Repeat,
+  Zap,
 } from 'lucide-react';
 import {
-  CURRENT_VIRTUAL_TIME,
   getDeadlineBadge,
   formatDateLabel,
+  doesClientBelongToCompany,
+  getClientCompanyLinks,
+  formatCadenceLabel,
 } from '../../utils/calendarUtils';
 import { AddClientModal } from './AddClientModal';
 
@@ -40,29 +43,37 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
     dispatchMonthlyUpdate,
     recordQuarterlyReview,
     runDeadlineScan,
-    updateClient,
+    deleteClient,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCompanyId, setFilterCompanyId] = useState<string>('ALL');
-  const [selectedClientForEdit, setSelectedClientForEdit] = useState<Client | null>(null);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
 
   const companyMap = new Map(companies.map((c) => [c.id, c]));
 
-  // Filter clients by search query and company
+  // Filter clients by search query and multi-company membership
   const displayedClients = filteredClients.filter((client) => {
-    if (filterCompanyId !== 'ALL' && client.companyId !== filterCompanyId) {
+    if (filterCompanyId !== 'ALL' && !doesClientBelongToCompany(client, filterCompanyId)) {
       return false;
     }
     const query = searchQuery.toLowerCase();
-    const comp = companyMap.get(client.companyId);
+    const links = getClientCompanyLinks(client);
+    const matchesCompanyOrService = links.some((l) => {
+      const comp = companyMap.get(l.companyId);
+      return (
+        l.serviceScope.toLowerCase().includes(query) ||
+        (comp && comp.name.toLowerCase().includes(query))
+      );
+    });
     return (
+      !query ||
       client.name.toLowerCase().includes(query) ||
       client.industry.toLowerCase().includes(query) ||
       client.contact.name.toLowerCase().includes(query) ||
       (client.address && client.address.toLowerCase().includes(query)) ||
-      (comp && comp.name.toLowerCase().includes(query))
+      matchesCompanyOrService
     );
   });
 
@@ -90,17 +101,18 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
           <div className="space-y-1.5 max-w-2xl">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-500 text-white">
-                Category A Tier Standard
+                Client Directory & Tier Governance
               </span>
               <span className="text-xs text-indigo-300 font-medium">
-                Mandatory Governance & Executive Review Rules
+                Multi-Company Client Links & One-Time / Recurring Tracking
               </span>
             </div>
             <p className="text-xs text-neutral-300 leading-relaxed">
-              Tier A clients are top-tier partnerships. Enterprise policy requires{' '}
-              <strong className="text-neutral-100 font-semibold">mandatory monthly updates</strong> (every 30 days)
-              and <strong className="text-neutral-100 font-semibold">detailed quarterly performance reviews</strong>.
-              Automated reminders are continuously dispatched as deadlines approach.
+              Manage clients across multiple companies (for example, one client connected to{' '}
+              <strong className="text-neutral-100">K &amp; K</strong> for Financial Planning,{' '}
+              <strong className="text-neutral-100">Upside Matrics</strong>, and{' '}
+              <strong className="text-neutral-100">Full Circle (FC)</strong> for Property Management).
+              Filter by company to view each company&apos;s client database.
             </p>
           </div>
 
@@ -235,7 +247,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
         </div>
       </div>
 
-      {/* Search and Filters Bar */}
+      {/* Search and Company Database Filter Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-xl">
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           <div className="relative w-full sm:w-72">
@@ -244,7 +256,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by client, industry, or contact..."
+              placeholder="Search client, service, company, address..."
               className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-hidden focus:border-indigo-500"
             />
           </div>
@@ -254,10 +266,10 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
             onChange={(e) => setFilterCompanyId(e.target.value)}
             className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-neutral-200 focus:outline-hidden focus:border-indigo-500"
           >
-            <option value="ALL">All Companies ({companies.length})</option>
+            <option value="ALL">All Company Databases ({companies.length})</option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.name} Client DB
               </option>
             ))}
           </select>
@@ -284,7 +296,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
       {/* Clients Grid / Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {displayedClients.map((client) => {
-          const comp = companyMap.get(client.companyId);
+          const links = getClientCompanyLinks(client);
           const monthlyBadge = getDeadlineBadge(client.monthlyUpdateDeadline);
           const quarterlyBadge = getDeadlineBadge(client.quarterlyReviewDeadline);
 
@@ -300,7 +312,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
               {/* Client Header */}
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span
                       className={`px-2 py-0.5 rounded text-xs font-mono font-bold ${
                         client.tier === 'A'
@@ -312,9 +324,8 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                     >
                       Tier {client.tier}
                     </span>
-                    <span className="text-xs text-neutral-400 flex items-center gap-1">
-                      <Building2 className="w-3 h-3 text-neutral-500" />
-                      {comp?.name || 'Company Profile'}
+                    <span className="text-[11px] text-neutral-400 font-mono">
+                      Connected to {links.length} compan{links.length === 1 ? 'y' : 'ies'}
                     </span>
                   </div>
 
@@ -330,12 +341,94 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                   )}
                 </div>
 
-                {/* Health Score Gauge */}
-                <div className="text-right">
-                  <div className="text-xs text-neutral-400">Health Score</div>
-                  <div className="text-base font-bold font-mono tabular-nums text-emerald-400">
-                    {client.healthScore}/100
+                {/* Health Score & Edit/Delete */}
+                <div className="flex flex-col items-end gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setEditingClient(client)}
+                      className="p-1 text-neutral-400 hover:text-indigo-300 hover:bg-neutral-800 rounded cursor-pointer"
+                      title="Edit client info & company links"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete client "${client.name}"?`)) {
+                          deleteClient(client.id);
+                        }
+                      }}
+                      className="p-1 text-neutral-500 hover:text-rose-400 hover:bg-neutral-800 rounded cursor-pointer"
+                      title="Delete client"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
+                  <div className="text-right">
+                    <div className="text-[11px] text-neutral-400">Health</div>
+                    <div className="text-sm font-bold font-mono tabular-nums text-emerald-400">
+                      {client.healthScore}/100
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Company Connections & Services Breakdown */}
+              <div className="bg-neutral-950/90 border border-neutral-800 rounded-lg p-3 space-y-2 text-xs">
+                <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                  Company Engagements & Service Scopes
+                </div>
+
+                <div className="space-y-1.5">
+                  {links.map((link) => {
+                    const comp = companyMap.get(link.companyId);
+                    return (
+                      <div
+                        key={`${client.id}-${link.companyId}`}
+                        className="flex flex-wrap items-center justify-between gap-2 p-2 rounded bg-neutral-900 border border-neutral-800/80"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: comp?.accentHex || '#6366F1' }}
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-neutral-100 truncate">
+                              {comp?.name || link.companyId}
+                            </div>
+                            <div className="text-[11px] text-indigo-300 flex items-center gap-1 truncate">
+                              <Briefcase className="w-3 h-3 shrink-0" />
+                              {link.serviceScope}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {link.engagementType === 'one_time' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                              <Zap className="w-2.5 h-2.5" />
+                              One-Time
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
+                              <Repeat className="w-2.5 h-2.5" />
+                              {formatCadenceLabel(link.cadence)}
+                            </span>
+                          )}
+
+                          {onScheduleMeetingForClient && (
+                            <button
+                              onClick={() => onScheduleMeetingForClient(client.id, link.companyId)}
+                              className="px-2 py-0.5 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded text-[10px] font-medium border border-indigo-500/30 transition-colors cursor-pointer"
+                              title={`Schedule meeting with ${client.name} under ${comp?.name}`}
+                            >
+                              Schedule
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -344,9 +437,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                 {/* Monthly Update Cadence */}
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="text-neutral-400 font-medium">
-                      Mandatory Monthly Update
-                    </div>
+                    <div className="text-neutral-400 font-medium">Mandatory Monthly Update</div>
                     <div className="text-[11px] text-neutral-500 mt-0.5 font-mono tabular-nums">
                       Last sent:{' '}
                       {client.lastMonthlyUpdateSent
@@ -375,9 +466,7 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                 {/* Detailed Quarterly Performance Review */}
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="text-neutral-400 font-medium">
-                      Quarterly Performance Review
-                    </div>
+                    <div className="text-neutral-400 font-medium">Quarterly Performance Review</div>
                     <div className="text-[11px] text-neutral-500 mt-0.5 font-mono tabular-nums">
                       Last held:{' '}
                       {client.lastQuarterlyReviewHeld
@@ -402,17 +491,22 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                 </div>
               </div>
 
-              {/* Contact and Quick Schedule */}
+              {/* Contact and Quick Actions */}
               <div className="flex items-center justify-between pt-1 text-xs">
-                <div className="text-neutral-400">
+                <div className="text-neutral-400 truncate">
                   <span className="text-neutral-200 font-medium">{client.contact.name}</span>
                   <span className="text-neutral-500"> ({client.contact.title})</span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {onScheduleMeetingForClient && (
                     <button
-                      onClick={() => onScheduleMeetingForClient(client.id, client.companyId)}
+                      onClick={() =>
+                        onScheduleMeetingForClient(
+                          client.id,
+                          filterCompanyId !== 'ALL' ? filterCompanyId : client.companyId
+                        )
+                      }
                       className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded text-xs font-medium border border-neutral-700 flex items-center gap-1 cursor-pointer"
                     >
                       <Calendar className="w-3 h-3 text-neutral-400" />
@@ -420,10 +514,10 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
                     </button>
                   )}
                   <button
-                    onClick={() => setSelectedClientForEdit(client)}
+                    onClick={() => setEditingClient(client)}
                     className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded text-xs font-medium border border-neutral-700 cursor-pointer"
                   >
-                    Edit Tier
+                    Modify Client
                   </button>
                 </div>
               </div>
@@ -432,107 +526,15 @@ export const ClientTierManagement: React.FC<ClientTierManagementProps> = ({
         })}
       </div>
 
-      {/* Edit Tier / Client Modal */}
-      {selectedClientForEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl w-full max-w-md p-5 space-y-4 text-xs text-neutral-200 shadow-2xl">
-            <h3 className="text-sm font-bold text-neutral-100">
-              Configure Client Tier & Cadence ({selectedClientForEdit.name})
-            </h3>
-
-            <div>
-              <label className="block text-neutral-300 font-medium mb-1">Client Tier Category</label>
-              <select
-                value={selectedClientForEdit.tier}
-                onChange={(e) =>
-                  setSelectedClientForEdit({
-                    ...selectedClientForEdit,
-                    tier: e.target.value as ClientTier,
-                  })
-                }
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs font-mono text-neutral-200"
-              >
-                <option value="A">Category A - Mandatory Monthly & Quarterly Review</option>
-                <option value="B">Category B - Bi-Monthly Executive Sync</option>
-                <option value="C">Category C - Standard SLA & Annual Health Check</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-neutral-300 font-medium mb-1">
-                Monthly Update Deadline (YYYY-MM-DD)
-              </label>
-              <input
-                type="date"
-                value={selectedClientForEdit.monthlyUpdateDeadline}
-                onChange={(e) =>
-                  setSelectedClientForEdit({
-                    ...selectedClientForEdit,
-                    monthlyUpdateDeadline: e.target.value,
-                  })
-                }
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs font-mono text-neutral-200"
-              />
-            </div>
-
-            <div>
-              <label className="block text-neutral-300 font-medium mb-1">
-                Quarterly Review Deadline (YYYY-MM-DD)
-              </label>
-              <input
-                type="date"
-                value={selectedClientForEdit.quarterlyReviewDeadline}
-                onChange={(e) =>
-                  setSelectedClientForEdit({
-                    ...selectedClientForEdit,
-                    quarterlyReviewDeadline: e.target.value,
-                  })
-                }
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs font-mono text-neutral-200"
-              />
-            </div>
-
-            <div>
-              <label className="block text-neutral-300 font-medium mb-1">Client Address</label>
-              <textarea
-                rows={2}
-                value={selectedClientForEdit.address || ''}
-                onChange={(e) =>
-                  setSelectedClientForEdit({
-                    ...selectedClientForEdit,
-                    address: e.target.value,
-                  })
-                }
-                placeholder="Enter client office / billing address..."
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs text-neutral-200"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
-              <button
-                onClick={() => setSelectedClientForEdit(null)}
-                className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  updateClient(selectedClientForEdit.id, selectedClientForEdit);
-                  setSelectedClientForEdit(null);
-                }}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium"
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Add Client Modal */}
+      {/* Add / Edit Client Modal */}
       <AddClientModal
-        isOpen={isAddClientOpen}
-        onClose={() => setIsAddClientOpen(false)}
+        isOpen={isAddClientOpen || editingClient !== null}
+        onClose={() => {
+          setIsAddClientOpen(false);
+          setEditingClient(null);
+        }}
         defaultCompanyId={filterCompanyId !== 'ALL' ? filterCompanyId : undefined}
+        editingClient={editingClient}
       />
     </div>
   );

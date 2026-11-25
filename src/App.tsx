@@ -17,6 +17,8 @@ import { NotificationDrawer } from './components/notifications/NotificationDrawe
 import { VideoWalkthroughModal } from './components/video/VideoWalkthroughModal';
 import { EmailGatewaySettingsModal } from './components/email/EmailGatewaySettingsModal';
 import { ShieldCheck, Building2, Bell, AlertTriangle } from 'lucide-react';
+import { MeetingScope } from './types';
+import { formatDateIso } from './utils/calendarUtils';
 
 function DashboardContent() {
   const {
@@ -30,13 +32,28 @@ function DashboardContent() {
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [isNewMeetingOpen, setIsNewMeetingOpen] = useState(false);
   const [newMeetingInitialDate, setNewMeetingInitialDate] = useState<string | undefined>(undefined);
+  const [newMeetingPrefill, setNewMeetingPrefill] = useState<{
+    companyId?: string;
+    clientId?: string;
+    departmentId?: string;
+    scope?: MeetingScope;
+  } | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
   const [isEmailGatewayOpen, setIsEmailGatewayOpen] = useState(false);
   const [emailGatewayCompanyId, setEmailGatewayCompanyId] = useState<string | undefined>(undefined);
 
-  const handleOpenNewMeeting = (date?: string) => {
+  const handleOpenNewMeeting = (
+    date?: string,
+    prefill?: {
+      companyId?: string;
+      clientId?: string;
+      departmentId?: string;
+      scope?: MeetingScope;
+    }
+  ) => {
     setNewMeetingInitialDate(date);
+    setNewMeetingPrefill(prefill || null);
     setIsNewMeetingOpen(true);
   };
 
@@ -114,8 +131,7 @@ function DashboardContent() {
         {activeTab === 'tiers' && (
           <ClientTierManagement
             onScheduleMeetingForClient={(clientId, companyId) => {
-              setSelectedCompanyId(companyId);
-              handleOpenNewMeeting();
+              handleOpenNewMeeting(undefined, { clientId, companyId, scope: 'client' });
             }}
           />
         )}
@@ -127,7 +143,10 @@ function DashboardContent() {
         {activeTab === 'analytics' && <EngagementAnalytics />}
 
         {activeTab === 'profiles' && (
-          <CompanyProfilesView onConfigureEmail={(cId) => handleOpenEmailConfig(cId)} />
+          <CompanyProfilesView
+            onConfigureEmail={(cId) => handleOpenEmailConfig(cId)}
+            onScheduleMeeting={(opts) => handleOpenNewMeeting(undefined, opts)}
+          />
         )}
       </main>
 
@@ -149,7 +168,9 @@ function DashboardContent() {
               Deployment & Video Guide
             </button>
             <span>·</span>
-            <span className="text-neutral-600">Virtual Clock: 2026-09-05 (GMT+05:30 IST)</span>
+            <span className="text-neutral-600">
+              System Date: {formatDateIso(new Date())} (GMT+05:30 IST)
+            </span>
           </div>
         </div>
       </footer>
@@ -163,8 +184,15 @@ function DashboardContent() {
       {/* New Meeting Modal */}
       <NewMeetingModal
         isOpen={isNewMeetingOpen}
-        onClose={() => setIsNewMeetingOpen(false)}
+        onClose={() => {
+          setIsNewMeetingOpen(false);
+          setNewMeetingPrefill(null);
+        }}
         initialDate={newMeetingInitialDate}
+        initialCompanyId={newMeetingPrefill?.companyId}
+        initialClientId={newMeetingPrefill?.clientId}
+        initialDepartmentId={newMeetingPrefill?.departmentId}
+        initialScope={newMeetingPrefill?.scope}
       />
 
       {/* Notification Drawer */}

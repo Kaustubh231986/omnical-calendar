@@ -1,5 +1,17 @@
 export type ClientTier = 'A' | 'B' | 'C';
 
+export type CadenceFrequency =
+  | 'one_time'
+  | 'weekly'
+  | 'monthly'
+  | 'quarterly'
+  | 'half_yearly'
+  | 'yearly';
+
+export type DealEngagementType = 'one_time' | 'recurring';
+
+export type MeetingScope = 'client' | 'company' | 'department';
+
 export type MeetingType =
   | 'Quarterly Review'
   | 'Monthly Update'
@@ -31,6 +43,25 @@ export interface EmailGatewayConfig {
   lastTestedAt?: string;
 }
 
+export interface Department {
+  id: string;
+  name: string;
+  headName: string;
+  headEmail: string;
+  meetingCadence: CadenceFrequency;
+  preferredTime?: string; // e.g. "15:00"
+  description?: string;
+}
+
+export interface WorkAssignee {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  departmentId?: string;
+  defaultCc?: boolean;
+}
+
 export interface CompanyProfile {
   id: string;
   name: string;
@@ -43,6 +74,10 @@ export interface CompanyProfile {
   syncStatus: SyncState;
   lastSyncedAt: string;
   encryptionPartition: string;
+  meetingCadence?: CadenceFrequency;
+  autoRescheduleMissed?: boolean;
+  departments?: Department[];
+  workAssignees?: WorkAssignee[];
   accountExecutive: {
     name: string;
     email: string;
@@ -65,13 +100,25 @@ export interface ClientContact {
   phone: string;
 }
 
+export interface ClientCompanyLink {
+  companyId: string;
+  serviceScope: string; // e.g. "Financial Planning", "Property Management Services"
+  engagementType: DealEngagementType;
+  cadence: CadenceFrequency;
+  departmentId?: string;
+  status?: 'active' | 'completed';
+}
+
 export interface Client {
   id: string;
-  companyId: string;
+  companyId: string; // Primary company ID
+  companyLinks?: ClientCompanyLink[]; // Supports 1, 2, 3+ company engagements with distinct services
   name: string;
   tier: ClientTier;
   industry: string;
   address?: string;
+  engagementType?: DealEngagementType;
+  cadence?: CadenceFrequency;
   contact: ClientContact;
   monthlyUpdateDeadline: string; // ISO date string: YYYY-MM-DD
   lastMonthlyUpdateSent: string | null;
@@ -94,8 +141,20 @@ export interface ActionItem {
   id: string;
   task: string;
   assignee: string;
+  assigneeEmail?: string;
   dueDate: string;
   completed: boolean;
+}
+
+export interface ForwardedMailRecord {
+  id: string;
+  to: string[];
+  cc: string[];
+  subject: string;
+  note: string;
+  sentAt: string;
+  senderEmail: string;
+  companyId: string;
 }
 
 export interface MeetingNotes {
@@ -118,6 +177,7 @@ export interface MeetingNotes {
     sentTimestamp?: string;
     syncedToAccount: boolean;
     syncedTimestamp?: string;
+    forwardedRecords?: ForwardedMailRecord[];
   };
 }
 
@@ -132,14 +192,26 @@ export interface AccountSyncLog {
 export interface MeetingEvent {
   id: string;
   companyId: string;
-  clientId: string;
+  clientId: string; // May be '' for pure internal company/department meetings
+  scope?: MeetingScope; // 'client' | 'company' | 'department'
+  departmentId?: string;
+  serviceScope?: string; // e.g. "Financial Planning" or "Property Management Services"
+  engagementType?: DealEngagementType; // 'one_time' | 'recurring'
+  cadence?: CadenceFrequency; // 'one_time' | 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly'
   title: string;
   description: string;
   startTime: string; // ISO datetime
   endTime: string;   // ISO datetime
   location: string;
   meetingType: MeetingType;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'in_progress';
+  status: 'scheduled' | 'completed' | 'cancelled' | 'in_progress' | 'missed';
+  autoRescheduleEnabled?: boolean;
+  autoRescheduled?: boolean;
+  originalStartTime?: string;
+  originalEndTime?: string;
+  rescheduledAt?: string;
+  rescheduleCount?: number;
+  rescheduleReason?: string;
   attendees: Attendee[];
   notes: MeetingNotes;
   syncLogs: AccountSyncLog[];
@@ -151,7 +223,7 @@ export interface MeetingEvent {
 
 export interface AppNotification {
   id: string;
-  type: 'meeting_advance' | 'meeting_imminent' | 'tier_a_deadline' | 'notes_sync' | 'sync_complete';
+  type: 'meeting_advance' | 'meeting_imminent' | 'tier_a_deadline' | 'notes_sync' | 'sync_complete' | 'auto_reschedule';
   title: string;
   message: string;
   timestamp: string;

@@ -14,12 +14,19 @@ import {
   Table as TableIcon,
   CalendarClock,
   CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Mail,
+  Repeat,
+  Zap,
 } from 'lucide-react';
 import {
   formatDateLabel,
   formatTimeRange,
   generateLogsCsv,
   triggerFileDownload,
+  formatCadenceLabel,
+  isMeetingOverdueUnheld,
 } from '../../utils/calendarUtils';
 
 interface HistoricalLogsViewProps {
@@ -27,7 +34,14 @@ interface HistoricalLogsViewProps {
 }
 
 export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMeeting }) => {
-  const { meetings, companies, clients, selectedCompanyId } = useApp();
+  const {
+    meetings,
+    companies,
+    clients,
+    selectedCompanyId,
+    overdueOrMissedMeetings,
+    runAutoRescheduleScan,
+  } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCompanyId, setFilterCompanyId] = useState<string>(
@@ -199,9 +213,12 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
   const renderMeetingRow = (m: (typeof displayedMeetings)[number], showCompanyColumn: boolean) => {
     const comp = companyMap.get(m.companyId);
     const cli = clientMap.get(m.clientId);
+    const dept = comp?.departments?.find((d) => d.id === m.departmentId);
     const present = m.attendees.filter((a) => a.status === 'attended').length;
     const total = m.attendees.length;
     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+    const isOverdue = m.startTime >= '2026-10-01' && isMeetingOverdueUnheld(m);
+    const forwardedCount = (m.notes.postMeeting.forwardedRecords || []).length;
 
     return (
       <tr key={m.id} className="hover:bg-neutral-850/50 transition-colors">
@@ -211,9 +228,15 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
           <div className="text-[11px] text-neutral-500">
             {formatTimeRange(m.startTime, m.endTime)}
           </div>
+          {m.originalStartTime && (
+            <div className="text-[10px] text-amber-400/90 mt-0.5 flex items-center gap-1">
+              <RefreshCw className="w-2.5 h-2.5" />
+              Orig: {formatDateLabel(m.originalStartTime)}
+            </div>
+          )}
         </td>
 
-        {/* Title & Client */}
+        {/* Title & Client / Department / Service */}
         <td className="py-3 px-4">
           <div
             onClick={() => onOpenMeeting(m.id)}
@@ -221,8 +244,34 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
           >
             {m.title}
           </div>
-          <div className="text-[11px] text-neutral-400 mt-0.5">
-            {cli?.name || 'Client'} · {m.meetingType}
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-400 mt-0.5">
+            <span>
+              {m.scope === 'department' && dept
+                ? `Dept: ${dept.name}`
+                : m.scope === 'company'
+                ? 'Company Review'
+                : cli?.name || 'Client'}{' '}
+              · {m.meetingType}
+            </span>
+            {m.serviceScope && (
+              <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px]">
+                {m.serviceScope}
+              </span>
+            )}
+            {m.engagementType === 'one_time' ? (
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] inline-flex items-center gap-0.5">
+                <Zap className="w-2.5 h-2.5" />
+                One-Time Deal
+              </span>
+            ) : (
+              m.cadence &&
+              m.cadence !== 'one_time' && (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] inline-flex items-center gap-0.5">
+                  <Repeat className="w-2.5 h-2.5" />
+                  {formatCadenceLabel(m.cadence)}
+                </span>
+              )
+            )}
           </div>
         </td>
 
@@ -245,17 +294,26 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
 
         {/* Status */}
         <td className="py-3 px-4 text-center whitespace-nowrap">
-          <span
-            className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-semibold border ${
-              m.status === 'completed'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : m.status === 'cancelled'
-                ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                : 'bg-sky-500/10 text-sky-300 border-sky-500/20'
-            }`}
-          >
-            {m.status}
-          </span>
+          <div className="flex flex-col items-center gap-1">
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-semibold border ${
+                m.status === 'completed'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : m.status === 'missed'
+                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                  : m.status === 'cancelled'
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  : isOverdue
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : 'bg-sky-500/10 text-sky-300 border-sky-500/20'
+              }`}
+            >
+              {isOverdue && m.status === 'scheduled' ? 'missed / overdue' : m.status}
+            </span>
+            {m.autoRescheduled && (
+              <span className="text-[9px] font-mono text-amber-400">AUTO-RESCHED</span>
+            )}
+          </div>
         </td>
 
         {/* Client Tier */}
@@ -282,9 +340,9 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
           </span>
         </td>
 
-        {/* Notes Sync Status */}
+        {/* Notes & Forwarded Mail Sync Status */}
         <td className="py-3 px-4 text-center">
-          <div className="flex items-center justify-center gap-2 text-[11px]">
+          <div className="flex items-center justify-center gap-1.5 text-[11px]">
             <span
               title={
                 m.notes.preMeeting.syncedToAccount
@@ -310,6 +368,15 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
             >
               Post
             </span>
+            {forwardedCount > 0 && (
+              <span
+                title={`${forwardedCount} company-wise mail forward(s) sent`}
+                className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-mono text-[10px]"
+              >
+                <Mail className="w-2.5 h-2.5" />
+                {forwardedCount}
+              </span>
+            )}
           </div>
         </td>
 
@@ -328,6 +395,41 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
 
   return (
     <div className="space-y-6">
+      {/* Missed / Unheld Meeting Alert Bar */}
+      {overdueOrMissedMeetings.length > 0 && (
+        <div className="bg-rose-950/30 border border-rose-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 text-xs">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold text-rose-200">
+                {overdueOrMissedMeetings.length} Scheduled{' '}
+                {overdueOrMissedMeetings.length === 1 ? 'Session' : 'Sessions'} Passed Without
+                Holding
+              </div>
+              <div className="text-[11px] text-rose-300/80 mt-0.5">
+                Auto-reschedule missed sessions to their next cadence slot with original date &amp;
+                time preserved, or open any row to pick a custom slot.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onOpenMeeting(overdueOrMissedMeetings[0].id)}
+              className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 rounded-lg border border-neutral-700 text-xs font-medium cursor-pointer"
+            >
+              Inspect First
+            </button>
+            <button
+              onClick={() => runAutoRescheduleScan()}
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Auto-Reschedule All ({overdueOrMissedMeetings.length})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Attendance Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Metric 1 */}
@@ -468,6 +570,7 @@ export const HistoricalLogsView: React.FC<HistoricalLogsViewProps> = ({ onOpenMe
             <option value="ALL">All Statuses</option>
             <option value="scheduled">Scheduled</option>
             <option value="completed">Completed</option>
+            <option value="missed">Missed (Unheld)</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>

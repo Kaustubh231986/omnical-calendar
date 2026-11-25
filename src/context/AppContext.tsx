@@ -8,6 +8,9 @@ import {
   AttendanceStatus,
   MeetingNotes,
   AccountSyncLog,
+  Department,
+  WorkAssignee,
+  ForwardedMailRecord,
 } from '../types';
 import {
   INITIAL_COMPANIES,
@@ -15,7 +18,30 @@ import {
   INITIAL_MEETINGS,
   INITIAL_NOTIFICATIONS,
 } from '../data/mockData';
-import { CURRENT_VIRTUAL_TIME, getDaysDifference } from '../utils/calendarUtils';
+import {
+  CURRENT_VIRTUAL_TIME,
+  getDaysDifference,
+  doesClientBelongToCompany,
+  getClientCompanyLinks,
+  computeNextRescheduleSlot,
+  isMeetingOverdueUnheld,
+  addCadenceToDate,
+  formatLocalIsoWithOffset,
+} from '../utils/calendarUtils';
+
+interface ForwardMailPayload {
+  toEmails: string[];
+  ccEmails: string[];
+  note: string;
+  subject?: string;
+}
+
+interface RescheduleOptions {
+  auto?: boolean;
+  customStartTime?: string;
+  customEndTime?: string;
+  reason?: string;
+}
 
 interface AppContextType {
   companies: CompanyProfile[];
@@ -28,46 +54,63 @@ interface AppContextType {
   setSelectedTier: (tier: ClientTier | 'ALL') => void;
   isSyncing: boolean;
   syncAllCalendars: () => Promise<void>;
-  
+
   // Meeting actions
-  addMeeting: (meetingData: Omit<MeetingEvent, 'id' | 'syncLogs' | 'notifications'>) => MeetingEvent;
+  addMeeting: (
+    meetingData: Omit<MeetingEvent, 'id' | 'syncLogs' | 'notifications'>,
+    repeatOccurrences?: number
+  ) => MeetingEvent;
   updateMeeting: (id: string, updates: Partial<MeetingEvent>) => void;
   deleteMeeting: (id: string) => void;
-  
+  rescheduleMeeting: (meetingId: string, options?: RescheduleOptions) => void;
+  markMeetingMissed: (meetingId: string, autoRescheduleNow?: boolean) => void;
+  runAutoRescheduleScan: () => number;
+  overdueOrMissedMeetings: MeetingEvent[];
+
   // Notes & Sync actions
   updatePreNotes: (meetingId: string, preNotes: Partial<MeetingNotes['preMeeting']>) => void;
   updatePostNotes: (meetingId: string, postNotes: Partial<MeetingNotes['postMeeting']>) => void;
   sendPreMeetingBriefing: (meetingId: string) => void;
   sendPostMeetingRecap: (meetingId: string) => void;
+  forwardPostMeetingMail: (meetingId: string, payload: ForwardMailPayload) => void;
   syncNotesToAccount: (meetingId: string, target: 'pre' | 'post' | 'both') => void;
-  
+
   // Attendance actions
   setAttendeeStatus: (meetingId: string, attendeeId: string, status: AttendanceStatus) => void;
-  
+
   // Client & Tier actions
   addClient: (clientData: Omit<Client, 'id'>) => Client;
   updateClient: (id: string, updates: Partial<Client>) => void;
+  deleteClient: (id: string) => void;
+  getClientsForCompany: (companyId: string) => Client[];
   dispatchMonthlyUpdate: (clientId: string) => void;
   recordQuarterlyReview: (clientId: string) => void;
   runDeadlineScan: () => void;
-  
+
   // Notifications actions
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   clearNotification: (id: string) => void;
   triggerManualTestAlert: (type: '24h_advance' | 'pre_start' | 'tier_a_deadline') => void;
-  
-  // Company actions
+
+  // Company, Department & Work Assignee actions
   addCompany: (comp: Omit<CompanyProfile, 'id' | 'syncStatus' | 'lastSyncedAt'>) => CompanyProfile;
   updateCompany: (id: string, updates: Partial<CompanyProfile>) => void;
+  deleteCompany: (id: string) => void;
+  addDepartment: (companyId: string, dept: Omit<Department, 'id'>) => Department;
+  updateDepartment: (companyId: string, deptId: string, updates: Partial<Department>) => void;
+  deleteDepartment: (companyId: string, deptId: string) => void;
+  addWorkAssignee: (companyId: string, assignee: Omit<WorkAssignee, 'id'>) => WorkAssignee;
+  updateWorkAssignee: (companyId: string, assigneeId: string, updates: Partial<WorkAssignee>) => void;
+  deleteWorkAssignee: (companyId: string, assigneeId: string) => void;
 
-  // Multi-calendar visibility controls (Google Calendar style checkboxes)
+  // Multi-calendar visibility controls
   visibleCalendarIds: string[];
   toggleCalendarVisibility: (companyId: string) => void;
   selectAllCalendars: () => void;
   deselectAllCalendars: () => void;
-  
-  // Active selected company profile (if not 'ALL')
+
+  // Derived views
   currentCompany: CompanyProfile | null;
   filteredMeetings: MeetingEvent[];
   filteredClients: Client[];
@@ -78,15 +121,14 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  COMPANIES: 'omnical_companies_v2',
-  CLIENTS: 'omnical_clients_v2',
-  MEETINGS: 'omnical_meetings_v2',
-  NOTIFICATIONS: 'omnical_notifications_v2',
-  VISIBLE_CALS: 'omnical_visible_cals_v2',
+  COMPANIES: 'omnical_companies_v3',
+  CLIENTS: 'omnical_clients_v3',
+  MEETINGS: 'omnical_meetings_v3',
+  NOTIFICATIONS: 'omnical_notifications_v3',
+  VISIBLE_CALS: 'omnical_visible_cals_v3',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load state from localStorage or initialize with seed data
   const [companies, setCompanies] = useState<CompanyProfile[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.COMPANIES);
@@ -123,7 +165,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  // Track which calendars are checked in the left sidebar (default all checked)
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.VISIBLE_CALS);
@@ -159,7 +200,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVisibleCalendarIds([]);
   }, []);
 
-  // Sync to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.COMPANIES, JSON.stringify(companies));
@@ -192,24 +232,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [notifications]);
 
-  // Current company profile if isolated
   const currentCompany = useMemo(() => {
     if (selectedCompanyId === 'ALL') return null;
     return companies.find((c) => c.id === selectedCompanyId) || null;
   }, [companies, selectedCompanyId]);
 
-  // Filtered meetings by company and client tier and multi-calendar checkboxes
   const filteredMeetings = useMemo(() => {
     return meetings.filter((m) => {
-      // Company profile isolation
       if (selectedCompanyId !== 'ALL') {
         if (m.companyId !== selectedCompanyId) return false;
       } else {
-        // Multi-calendar visibility checkbox filter
         if (!visibleCalendarIds.includes(m.companyId)) return false;
       }
-      // Tier filtering
-      if (selectedTier !== 'ALL') {
+      if (selectedTier !== 'ALL' && m.clientId) {
         const client = clients.find((c) => c.id === m.clientId);
         if (client && client.tier !== selectedTier) {
           return false;
@@ -219,13 +254,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [meetings, clients, selectedCompanyId, selectedTier, visibleCalendarIds]);
 
-  // Filtered clients
+  // Multi-company aware client filter
   const filteredClients = useMemo(() => {
     return clients.filter((c) => {
       if (selectedCompanyId !== 'ALL') {
-        if (c.companyId !== selectedCompanyId) return false;
+        if (!doesClientBelongToCompany(c, selectedCompanyId)) return false;
       } else {
-        if (!visibleCalendarIds.includes(c.companyId)) return false;
+        const links = getClientCompanyLinks(c);
+        const anyVisible =
+          visibleCalendarIds.includes(c.companyId) ||
+          links.some((l) => visibleCalendarIds.includes(l.companyId));
+        if (!anyVisible) return false;
       }
       if (selectedTier !== 'ALL' && c.tier !== selectedTier) {
         return false;
@@ -234,10 +273,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [clients, selectedCompanyId, selectedTier, visibleCalendarIds]);
 
-  // Tier A upcoming / overdue deadlines count
+  const getClientsForCompany = useCallback(
+    (companyId: string) => {
+      return clients.filter((c) => doesClientBelongToCompany(c, companyId));
+    },
+    [clients]
+  );
+
+  // Overdue unheld meetings (>= Oct 2026 to avoid mutating static Sept 5-8 demo snapshot) or explicitly marked 'missed'
+  const overdueOrMissedMeetings = useMemo(() => {
+    const now = new Date();
+    return meetings.filter((m) => {
+      if (m.status === 'missed') return true;
+      if (m.startTime >= '2026-10-01' && isMeetingOverdueUnheld(m, now)) {
+        return true;
+      }
+      return false;
+    });
+  }, [meetings]);
+
   const tierAUpcomingDeadlinesCount = useMemo(() => {
     return clients
-      .filter((c) => (selectedCompanyId === 'ALL' || c.companyId === selectedCompanyId) && c.tier === 'A')
+      .filter(
+        (c) =>
+          (selectedCompanyId === 'ALL' || doesClientBelongToCompany(c, selectedCompanyId)) &&
+          c.tier === 'A'
+      )
       .reduce((count, c) => {
         const daysMonthly = getDaysDifference(c.monthlyUpdateDeadline, CURRENT_VIRTUAL_TIME);
         const daysQuarterly = getDaysDifference(c.quarterlyReviewDeadline, CURRENT_VIRTUAL_TIME);
@@ -252,11 +313,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return notifications.filter((n) => !n.read).length;
   }, [notifications]);
 
-  // Unified Calendar Synchronizer
   const syncAllCalendars = useCallback(async () => {
     setIsSyncing(true);
-    // Simulate multi-company network handshake
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 900));
 
     const timestamp = new Date().toISOString();
     setCompanies((prev) =>
@@ -267,7 +326,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }))
     );
 
-    // Add notification
     const syncNotif: AppNotification = {
       id: `sync-${Date.now()}`,
       type: 'sync_complete',
@@ -282,51 +340,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsSyncing(false);
   }, [companies.length]);
 
-  // Add meeting
+  // Add meeting (supports optional recurring occurrences creation)
   const addMeeting = useCallback(
-    (meetingData: Omit<MeetingEvent, 'id' | 'syncLogs' | 'notifications'>) => {
-      const newId = `meet-${Date.now()}`;
-      const newMeeting: MeetingEvent = {
-        ...meetingData,
-        id: newId,
-        notifications: {
-          dayBeforeSent: false,
-          hourBeforeSent: false,
-        },
-        syncLogs: [
-          {
-            id: `log-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            action: 'Event Created & Scheduled',
-            status: 'success',
-            details: 'Event added to Unified Master Schedule and isolated company partition',
+    (
+      meetingData: Omit<MeetingEvent, 'id' | 'syncLogs' | 'notifications'>,
+      repeatOccurrences = 1
+    ) => {
+      const baseTs = Date.now();
+      const count =
+        meetingData.engagementType === 'recurring' &&
+        meetingData.cadence &&
+        meetingData.cadence !== 'one_time'
+          ? Math.max(1, Math.min(12, repeatOccurrences))
+          : 1;
+
+      const createdEvents: MeetingEvent[] = [];
+      let cursorStart = new Date(meetingData.startTime);
+      let cursorEnd = new Date(meetingData.endTime);
+
+      for (let i = 0; i < count; i++) {
+        const startIso = i === 0 ? meetingData.startTime : formatLocalIsoWithOffset(cursorStart);
+        const endIso = i === 0 ? meetingData.endTime : formatLocalIsoWithOffset(cursorEnd);
+        const newId = `meet-${baseTs}-${i}`;
+
+        const ev: MeetingEvent = {
+          ...meetingData,
+          id: newId,
+          startTime: startIso,
+          endTime: endIso,
+          autoRescheduleEnabled: meetingData.autoRescheduleEnabled ?? true,
+          notifications: {
+            dayBeforeSent: false,
+            hourBeforeSent: false,
           },
-        ],
-      };
+          syncLogs: [
+            {
+              id: `log-${baseTs}-${i}`,
+              timestamp: new Date().toISOString(),
+              action: count > 1 ? `Recurring Series Created (${i + 1}/${count})` : 'Event Created & Scheduled',
+              status: 'success',
+              details: `Added to company partition (${meetingData.scope || 'client'} · ${
+                meetingData.engagementType === 'one_time' ? 'One-Time Deal' : meetingData.cadence || 'monthly'
+              })`,
+            },
+          ],
+        };
+        createdEvents.push(ev);
 
-      setMeetings((prev) => [newMeeting, ...prev]);
+        if (i < count - 1) {
+          cursorStart = addCadenceToDate(cursorStart, meetingData.cadence);
+          cursorEnd = addCadenceToDate(cursorEnd, meetingData.cadence);
+        }
+      }
 
-      // Check if meeting is scheduled within next 24 hours to generate advance notification
-      const diffDays = getDaysDifference(newMeeting.startTime, CURRENT_VIRTUAL_TIME);
+      setMeetings((prev) => [...createdEvents, ...prev]);
+
+      const firstMeeting = createdEvents[0];
+      const diffDays = getDaysDifference(firstMeeting.startTime, CURRENT_VIRTUAL_TIME);
       if (diffDays >= 0 && diffDays <= 1) {
-        const client = clients.find((c) => c.id === newMeeting.clientId);
-        const comp = companies.find((c) => c.id === newMeeting.companyId);
+        const client = clients.find((c) => c.id === firstMeeting.clientId);
+        const comp = companies.find((co) => co.id === firstMeeting.companyId);
         const notif: AppNotification = {
           id: `adv-${Date.now()}`,
           type: 'meeting_advance',
-          title: `24h Advance Notice: ${newMeeting.title}`,
-          message: `Meeting scheduled within 24 hours for ${client?.name || 'Client'} (${comp?.name}). Review pre-meeting agenda.`,
+          title: `24h Advance Notice: ${firstMeeting.title}`,
+          message: `Meeting scheduled within 24 hours for ${client?.name || comp?.name || 'Team'}. Review pre-meeting agenda.`,
           timestamp: new Date().toISOString(),
           read: false,
-          meetingId: newId,
-          clientId: newMeeting.clientId,
-          companyId: newMeeting.companyId,
+          meetingId: firstMeeting.id,
+          clientId: firstMeeting.clientId,
+          companyId: firstMeeting.companyId,
           severity: 'info',
         };
         setNotifications((prev) => [notif, ...prev]);
       }
 
-      return newMeeting;
+      return firstMeeting;
     },
     [clients, companies]
   );
@@ -344,7 +433,179 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMeetings((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
-  // Update Pre-meeting Notes
+  const rescheduleMeeting = useCallback(
+    (meetingId: string, options?: RescheduleOptions) => {
+      const target = meetings.find((m) => m.id === meetingId);
+      if (!target) return;
+
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const isAuto = options?.auto ?? true;
+      const nextSlot =
+        options?.customStartTime && options?.customEndTime
+          ? { startTime: options.customStartTime, endTime: options.customEndTime }
+          : computeNextRescheduleSlot(target.startTime, target.endTime, target.cadence, now);
+
+      const originalStart = target.originalStartTime || target.startTime;
+      const originalEnd = target.originalEndTime || target.endTime;
+
+      const logEntry: AccountSyncLog = {
+        id: `log-resched-${Date.now()}`,
+        timestamp: nowIso,
+        action: isAuto ? 'Auto-Rescheduled Missed Meeting' : 'Manually Rescheduled Meeting',
+        status: 'success',
+        details: `Moved from ${new Date(target.startTime).toLocaleString()} to ${new Date(
+          nextSlot.startTime
+        ).toLocaleString()}${options?.reason ? ` (${options.reason})` : ''}`,
+      };
+
+      setMeetings((prev) =>
+        prev.map((m) => {
+          if (m.id !== meetingId) return m;
+          return {
+            ...m,
+            status: 'scheduled',
+            startTime: nextSlot.startTime,
+            endTime: nextSlot.endTime,
+            originalStartTime: originalStart,
+            originalEndTime: originalEnd,
+            autoRescheduled: isAuto,
+            rescheduledAt: nowIso,
+            rescheduleCount: (m.rescheduleCount || 0) + 1,
+            rescheduleReason: options?.reason || m.rescheduleReason || 'Missed scheduled slot — moved to next valid time',
+            syncLogs: [logEntry, ...(m.syncLogs || [])],
+          };
+        })
+      );
+
+      const comp = companies.find((c) => c.id === target.companyId);
+      setNotifications((prev) => [
+        {
+          id: `notif-resched-${Date.now()}`,
+          type: 'auto_reschedule',
+          title: `${isAuto ? 'Auto-Rescheduled' : 'Rescheduled'}: ${target.title}`,
+          message: `Missed slot (${new Date(originalStart).toLocaleDateString()}) moved to ${new Date(
+            nextSlot.startTime
+          ).toLocaleString()} (${comp?.name || 'Company'}).`,
+          timestamp: nowIso,
+          read: false,
+          meetingId,
+          companyId: target.companyId,
+          clientId: target.clientId,
+          severity: 'warning',
+        },
+        ...prev,
+      ]);
+    },
+    [meetings, companies]
+  );
+
+  const markMeetingMissed = useCallback(
+    (meetingId: string, autoRescheduleNow = false) => {
+      if (autoRescheduleNow) {
+        rescheduleMeeting(meetingId, {
+          auto: true,
+          reason: 'Meeting did not happen — automatically rescheduled',
+        });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      setMeetings((prev) =>
+        prev.map((m) => {
+          if (m.id !== meetingId) return m;
+          return {
+            ...m,
+            status: 'missed',
+            originalStartTime: m.originalStartTime || m.startTime,
+            originalEndTime: m.originalEndTime || m.endTime,
+            rescheduleReason: 'Marked as Did Not Happen / Missed',
+            syncLogs: [
+              {
+                id: `log-miss-${Date.now()}`,
+                timestamp: nowIso,
+                action: 'Marked Meeting as Missed',
+                status: 'pending',
+                details: 'Scheduled session did not take place; awaiting reschedule.',
+              },
+              ...(m.syncLogs || []),
+            ],
+          };
+        })
+      );
+    },
+    [rescheduleMeeting]
+  );
+
+  const runAutoRescheduleScan = useCallback((): number => {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    let count = 0;
+    const newNotifs: AppNotification[] = [];
+
+    setMeetings((prev) =>
+      prev.map((m) => {
+        const needsReschedule =
+          m.status === 'missed' ||
+          (m.startTime >= '2026-10-01' &&
+            isMeetingOverdueUnheld(m, now) &&
+            m.autoRescheduleEnabled !== false);
+
+        if (!needsReschedule) return m;
+
+        count++;
+        const nextSlot = computeNextRescheduleSlot(m.startTime, m.endTime, m.cadence, now);
+        const origStart = m.originalStartTime || m.startTime;
+        const origEnd = m.originalEndTime || m.endTime;
+
+        newNotifs.push({
+          id: `auto-resched-${m.id}-${Date.now()}`,
+          type: 'auto_reschedule',
+          title: `Auto-Rescheduled: ${m.title}`,
+          message: `Unheld slot (${new Date(origStart).toLocaleDateString()}) automatically moved to ${new Date(
+            nextSlot.startTime
+          ).toLocaleString()}.`,
+          timestamp: nowIso,
+          read: false,
+          meetingId: m.id,
+          companyId: m.companyId,
+          clientId: m.clientId,
+          severity: 'warning',
+        });
+
+        return {
+          ...m,
+          status: 'scheduled',
+          startTime: nextSlot.startTime,
+          endTime: nextSlot.endTime,
+          originalStartTime: origStart,
+          originalEndTime: origEnd,
+          autoRescheduled: true,
+          rescheduledAt: nowIso,
+          rescheduleCount: (m.rescheduleCount || 0) + 1,
+          rescheduleReason: 'Auto-rescheduled because scheduled time passed without completion',
+          syncLogs: [
+            {
+              id: `log-autores-${m.id}-${Date.now()}`,
+              timestamp: nowIso,
+              action: 'Auto-Rescheduled Passed Meeting',
+              status: 'success',
+              details: `Previous ${new Date(origStart).toLocaleString()} -> New ${new Date(
+                nextSlot.startTime
+              ).toLocaleString()}`,
+            },
+            ...(m.syncLogs || []),
+          ],
+        };
+      })
+    );
+
+    if (newNotifs.length > 0) {
+      setNotifications((prev) => [...newNotifs, ...prev]);
+    }
+    return count;
+  }, []);
+
   const updatePreNotes = useCallback((meetingId: string, preNotes: Partial<MeetingNotes['preMeeting']>) => {
     setMeetings((prev) =>
       prev.map((m) => {
@@ -363,7 +624,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, []);
 
-  // Update Post-meeting Notes
   const updatePostNotes = useCallback((meetingId: string, postNotes: Partial<MeetingNotes['postMeeting']>) => {
     setMeetings((prev) =>
       prev.map((m) => {
@@ -382,7 +642,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, []);
 
-  // Send Pre-Meeting Briefing
   const sendPreMeetingBriefing = useCallback(
     (meetingId: string) => {
       const now = new Date().toISOString();
@@ -431,7 +690,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [meetings]
   );
 
-  // Send Post-Meeting Recap
   const sendPostMeetingRecap = useCallback(
     (meetingId: string) => {
       const now = new Date().toISOString();
@@ -482,7 +740,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [meetings]
   );
 
-  // Sync Notes back to company account
+  const forwardPostMeetingMail = useCallback(
+    (meetingId: string, payload: ForwardMailPayload) => {
+      const targetMeeting = meetings.find((m) => m.id === meetingId);
+      if (!targetMeeting) return;
+      const comp = companies.find((c) => c.id === targetMeeting.companyId);
+      const now = new Date().toISOString();
+      const senderEmail = comp?.emailConfig?.senderEmail || comp?.accountExecutive.email || 'dispatch@omnical.internal';
+      const subject =
+        payload.subject?.trim() ||
+        `[${comp?.name || 'Company'}] Work Assignment & Meeting Recap: ${targetMeeting.title}`;
+
+      const record: ForwardedMailRecord = {
+        id: `fwd-${Date.now()}`,
+        to: payload.toEmails,
+        cc: payload.ccEmails,
+        subject,
+        note: payload.note,
+        sentAt: now,
+        senderEmail,
+        companyId: targetMeeting.companyId,
+      };
+
+      const logEntry: AccountSyncLog = {
+        id: `log-fwd-${Date.now()}`,
+        timestamp: now,
+        action: `Forwarded Post-Meeting Work Mail (${comp?.name || 'Company'})`,
+        status: 'success',
+        details: `From: ${senderEmail} | To: ${payload.toEmails.join(', ') || 'None'} | CC: ${
+          payload.ccEmails.join(', ') || 'None'
+        }`,
+      };
+
+      setMeetings((prev) =>
+        prev.map((m) => {
+          if (m.id !== meetingId) return m;
+          return {
+            ...m,
+            notes: {
+              ...m.notes,
+              postMeeting: {
+                ...m.notes.postMeeting,
+                sentToAttendees: true,
+                sentTimestamp: now,
+                forwardedRecords: [record, ...(m.notes.postMeeting.forwardedRecords || [])],
+              },
+            },
+            syncLogs: [logEntry, ...(m.syncLogs || [])],
+          };
+        })
+      );
+
+      setNotifications((prev) => [
+        {
+          id: `notif-fwd-${Date.now()}`,
+          type: 'notes_sync',
+          title: `Work Assignment Emailed (${comp?.name || 'Company'})`,
+          message: `Post-meeting brief forwarded from ${senderEmail} to ${payload.toEmails.join(', ')}${
+            payload.ccEmails.length ? ` (CC: ${payload.ccEmails.join(', ')})` : ''
+          }.`,
+          timestamp: now,
+          read: false,
+          meetingId,
+          companyId: targetMeeting.companyId,
+          clientId: targetMeeting.clientId,
+          severity: 'info',
+        },
+        ...prev,
+      ]);
+    },
+    [meetings, companies]
+  );
+
   const syncNotesToAccount = useCallback(
     (meetingId: string, target: 'pre' | 'post' | 'both') => {
       const now = new Date().toISOString();
@@ -542,7 +871,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [meetings, companies]
   );
 
-  // Set Attendee Status
   const setAttendeeStatus = useCallback((meetingId: string, attendeeId: string, status: AttendanceStatus) => {
     setMeetings((prev) =>
       prev.map((m) => {
@@ -555,27 +883,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, []);
 
-  // Add Client
   const addClient = useCallback((clientData: Omit<Client, 'id'>): Client => {
+    const primaryCompanyId =
+      clientData.companyLinks && clientData.companyLinks.length > 0
+        ? clientData.companyLinks[0].companyId
+        : clientData.companyId;
     const newClient: Client = {
       ...clientData,
+      companyId: primaryCompanyId,
       id: `cli-${Date.now()}`,
     };
     setClients((prev) => [newClient, ...prev]);
     return newClient;
   }, []);
 
-  // Update Client
   const updateClient = useCallback((id: string, updates: Partial<Client>) => {
     setClients((prev) =>
       prev.map((c) => {
         if (c.id !== id) return c;
-        return { ...c, ...updates };
+        const merged = { ...c, ...updates };
+        if (merged.companyLinks && merged.companyLinks.length > 0) {
+          merged.companyId = merged.companyLinks[0].companyId;
+        }
+        return merged;
       })
     );
   }, []);
 
-  // Dispatch Tier A / Monthly Update (resets cadence and advances deadline by 30 days)
+  const deleteClient = useCallback((id: string) => {
+    setClients((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
   const dispatchMonthlyUpdate = useCallback(
     (clientId: string) => {
       const now = new Date();
@@ -615,7 +953,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [clients, companies]
   );
 
-  // Record completed Quarterly Review (advances deadline by 90 days)
   const recordQuarterlyReview = useCallback(
     (clientId: string) => {
       const now = new Date();
@@ -652,7 +989,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [clients]
   );
 
-  // Run automated deadline check for all clients
   const runDeadlineScan = useCallback(() => {
     const newAlerts: AppNotification[] = [];
     const now = CURRENT_VIRTUAL_TIME;
@@ -709,7 +1045,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [clients]);
 
-  // Notifications helper
   const markNotificationRead = useCallback((id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   }, []);
@@ -722,7 +1057,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
-  // Manual test alert trigger to demonstrate before-meeting alerts and deadline reminders
   const triggerManualTestAlert = useCallback(
     (type: '24h_advance' | 'pre_start' | 'tier_a_deadline') => {
       const nowIso = new Date().toISOString();
@@ -733,7 +1067,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: `test-24h-${Date.now()}`,
           type: 'meeting_advance',
           title: '24-Hour Advance Alert: Executive Strategy Session',
-          message: 'Meeting with Nexus Cloud Systems begins tomorrow at 11:00 AM EDT. Pre-meeting notes are ready for review.',
+          message: 'Meeting begins tomorrow at 11:00 AM IST. Pre-meeting notes are ready for review.',
           timestamp: nowIso,
           read: false,
           severity: 'info',
@@ -742,7 +1076,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         alert = {
           id: `test-pre-${Date.now()}`,
           type: 'meeting_imminent',
-          title: 'Meeting Starts in 15 Minutes: Starlight Financial',
+          title: 'Meeting Starts in 15 Minutes',
           message: 'Mandatory Monthly Review starting shortly. Please ensure agenda is sent and notes synced.',
           timestamp: nowIso,
           read: false,
@@ -753,7 +1087,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: `test-tier-a-${Date.now()}`,
           type: 'tier_a_deadline',
           title: 'Tier A Automated Deadline Reminder',
-          message: 'TransOcean Maritime Holdings quarterly performance audit deadline is in 5 business days. Schedule executive signoff.',
+          message: 'Category A quarterly performance review deadline is in 5 business days. Schedule executive signoff.',
           timestamp: nowIso,
           read: false,
           severity: 'urgent',
@@ -765,13 +1099,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     []
   );
 
-  // Company management
+  // Company CRUD
   const addCompany = useCallback((comp: Omit<CompanyProfile, 'id' | 'syncStatus' | 'lastSyncedAt'>): CompanyProfile => {
     const newComp: CompanyProfile = {
       ...comp,
       id: `comp-${Date.now()}`,
       syncStatus: 'synced',
       lastSyncedAt: new Date().toISOString(),
+      departments: comp.departments || [],
+      workAssignees: comp.workAssignees || [
+        {
+          id: `wa-${Date.now()}`,
+          name: comp.accountExecutive.name,
+          email: comp.accountExecutive.email,
+          role: comp.accountExecutive.role || 'Account Director',
+          defaultCc: true,
+        },
+      ],
     };
     setCompanies((prev) => [...prev, newComp]);
     setVisibleCalendarIds((prev) => (prev.includes(newComp.id) ? prev : [...prev, newComp.id]));
@@ -784,6 +1128,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (c.id !== id) return c;
         return { ...c, ...updates };
       })
+    );
+  }, []);
+
+  const deleteCompany = useCallback(
+    (id: string) => {
+      setCompanies((prev) => prev.filter((c) => c.id !== id));
+      setVisibleCalendarIds((prev) => prev.filter((cid) => cid !== id));
+      if (selectedCompanyId === id) {
+        setSelectedCompanyId('ALL');
+      }
+      // Clean company links from clients
+      setClients((prev) =>
+        prev.map((cl) => ({
+          ...cl,
+          companyLinks: cl.companyLinks?.filter((l) => l.companyId !== id),
+        }))
+      );
+    },
+    [selectedCompanyId]
+  );
+
+  // Department CRUD
+  const addDepartment = useCallback((companyId: string, dept: Omit<Department, 'id'>): Department => {
+    const newDept: Department = {
+      ...dept,
+      id: `dept-${Date.now()}`,
+    };
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId ? { ...c, departments: [...(c.departments || []), newDept] } : c
+      )
+    );
+    return newDept;
+  }, []);
+
+  const updateDepartment = useCallback(
+    (companyId: string, deptId: string, updates: Partial<Department>) => {
+      setCompanies((prev) =>
+        prev.map((c) => {
+          if (c.id !== companyId) return c;
+          return {
+            ...c,
+            departments: (c.departments || []).map((d) => (d.id === deptId ? { ...d, ...updates } : d)),
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const deleteDepartment = useCallback((companyId: string, deptId: string) => {
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId
+          ? { ...c, departments: (c.departments || []).filter((d) => d.id !== deptId) }
+          : c
+      )
+    );
+  }, []);
+
+  // Work Assignee CRUD (company-wise)
+  const addWorkAssignee = useCallback((companyId: string, assignee: Omit<WorkAssignee, 'id'>): WorkAssignee => {
+    const newAssignee: WorkAssignee = {
+      ...assignee,
+      id: `wa-${Date.now()}`,
+    };
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId
+          ? { ...c, workAssignees: [...(c.workAssignees || []), newAssignee] }
+          : c
+      )
+    );
+    return newAssignee;
+  }, []);
+
+  const updateWorkAssignee = useCallback(
+    (companyId: string, assigneeId: string, updates: Partial<WorkAssignee>) => {
+      setCompanies((prev) =>
+        prev.map((c) => {
+          if (c.id !== companyId) return c;
+          return {
+            ...c,
+            workAssignees: (c.workAssignees || []).map((w) =>
+              w.id === assigneeId ? { ...w, ...updates } : w
+            ),
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const deleteWorkAssignee = useCallback((companyId: string, assigneeId: string) => {
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId
+          ? { ...c, workAssignees: (c.workAssignees || []).filter((w) => w.id !== assigneeId) }
+          : c
+      )
     );
   }, []);
 
@@ -803,14 +1247,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addMeeting,
         updateMeeting,
         deleteMeeting,
+        rescheduleMeeting,
+        markMeetingMissed,
+        runAutoRescheduleScan,
+        overdueOrMissedMeetings,
         updatePreNotes,
         updatePostNotes,
         sendPreMeetingBriefing,
         sendPostMeetingRecap,
+        forwardPostMeetingMail,
         syncNotesToAccount,
         setAttendeeStatus,
         addClient,
         updateClient,
+        deleteClient,
+        getClientsForCompany,
         dispatchMonthlyUpdate,
         recordQuarterlyReview,
         runDeadlineScan,
@@ -820,6 +1271,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         triggerManualTestAlert,
         addCompany,
         updateCompany,
+        deleteCompany,
+        addDepartment,
+        updateDepartment,
+        deleteDepartment,
+        addWorkAssignee,
+        updateWorkAssignee,
+        deleteWorkAssignee,
         currentCompany,
         filteredMeetings,
         filteredClients,

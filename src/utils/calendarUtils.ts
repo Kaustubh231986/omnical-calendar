@@ -1,4 +1,4 @@
-import { MeetingEvent, CompanyProfile, Client } from '../types';
+import { MeetingEvent, CompanyProfile, Client, CadenceFrequency, ClientCompanyLink } from '../types';
 
 export const CURRENT_VIRTUAL_TIME = new Date();
 
@@ -309,3 +309,123 @@ export function generateLogsCsv(meetings: MeetingEvent[], companies: CompanyProf
 
   return [headers.join(','), ...rows].join('\n');
 }
+
+export const CADENCE_OPTIONS: Array<{ value: CadenceFrequency; label: string; shortLabel: string }> = [
+  { value: 'one_time', label: 'One-Time Deal', shortLabel: 'One-Time' },
+  { value: 'weekly', label: 'Weekly', shortLabel: 'Weekly' },
+  { value: 'monthly', label: 'Monthly', shortLabel: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly', shortLabel: 'Quarterly' },
+  { value: 'half_yearly', label: 'Half-Yearly (6 Months)', shortLabel: 'Half-Yearly' },
+  { value: 'yearly', label: 'Yearly (Annual)', shortLabel: 'Yearly' },
+];
+
+export const RECURRING_CADENCE_OPTIONS = CADENCE_OPTIONS.filter((c) => c.value !== 'one_time');
+
+export function formatCadenceLabel(cadence?: CadenceFrequency): string {
+  const found = CADENCE_OPTIONS.find((c) => c.value === cadence);
+  return found ? found.label : 'Monthly';
+}
+
+export function addCadenceToDate(date: Date, cadence?: CadenceFrequency): Date {
+  const next = new Date(date.getTime());
+  switch (cadence) {
+    case 'weekly':
+      next.setDate(next.getDate() + 7);
+      break;
+    case 'monthly':
+      next.setMonth(next.getMonth() + 1);
+      break;
+    case 'quarterly':
+      next.setMonth(next.getMonth() + 3);
+      break;
+    case 'half_yearly':
+      next.setMonth(next.getMonth() + 6);
+      break;
+    case 'yearly':
+      next.setFullYear(next.getFullYear() + 1);
+      break;
+    case 'one_time':
+    default:
+      next.setDate(next.getDate() + 2);
+      break;
+  }
+  return next;
+}
+
+export function formatLocalIsoWithOffset(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}`;
+}
+
+export function computeNextRescheduleSlot(
+  startIso: string,
+  endIso: string,
+  cadence?: CadenceFrequency,
+  referenceNow: Date = new Date()
+): { startTime: string; endTime: string } {
+  const origStart = new Date(startIso);
+  const origEnd = new Date(endIso);
+  const durationMs = Math.max(30 * 60 * 1000, origEnd.getTime() - origStart.getTime());
+
+  let nextStart = addCadenceToDate(origStart, cadence);
+  let safety = 0;
+  // Advance step-by-step until the rescheduled slot is after referenceNow
+  while (nextStart.getTime() <= referenceNow.getTime() && safety < 24) {
+    nextStart = addCadenceToDate(nextStart, cadence);
+    safety++;
+  }
+  // If still not in the future (e.g. one-time fallback), put it +2 days from referenceNow at same hour/min
+  if (nextStart.getTime() <= referenceNow.getTime()) {
+    nextStart = new Date(referenceNow.getTime());
+    nextStart.setDate(nextStart.getDate() + 2);
+    nextStart.setHours(origStart.getHours(), origStart.getMinutes(), 0, 0);
+  }
+
+  const nextEnd = new Date(nextStart.getTime() + durationMs);
+  return {
+    startTime: formatLocalIsoWithOffset(nextStart),
+    endTime: formatLocalIsoWithOffset(nextEnd),
+  };
+}
+
+export function isMeetingOverdueUnheld(
+  meeting: MeetingEvent,
+  referenceNow: Date = new Date()
+): boolean {
+  if (meeting.status !== 'scheduled') return false;
+  const endMs = new Date(meeting.endTime).getTime();
+  return !Number.isNaN(endMs) && endMs < referenceNow.getTime();
+}
+
+export function doesClientBelongToCompany(client: Client, companyId: string): boolean {
+  if (client.companyId === companyId) return true;
+  return Boolean(client.companyLinks?.some((link) => link.companyId === companyId));
+}
+
+export function getClientCompanyLinks(client: Client): ClientCompanyLink[] {
+  if (client.companyLinks && client.companyLinks.length > 0) {
+    return client.companyLinks;
+  }
+  return [
+    {
+      companyId: client.companyId,
+      serviceScope: client.industry || 'General Advisory',
+      engagementType: client.engagementType || 'recurring',
+      cadence: client.cadence || (client.tier === 'A' ? 'monthly' : 'quarterly'),
+      status: 'active',
+    },
+  ];
+}
+
+export function getClientLinkForCompany(
+  client: Client,
+  companyId: string
+): ClientCompanyLink | undefined {
+  return getClientCompanyLinks(client).find((l) => l.companyId === companyId);
+}
+

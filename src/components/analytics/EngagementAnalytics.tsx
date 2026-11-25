@@ -11,7 +11,7 @@ import {
   Building2,
   Users,
 } from 'lucide-react';
-import { getDeadlineBadge } from '../../utils/calendarUtils';
+import { getDeadlineBadge, doesClientBelongToCompany } from '../../utils/calendarUtils';
 
 export const EngagementAnalytics: React.FC = () => {
   const { meetings, clients, companies, selectedCompanyId } = useApp();
@@ -23,10 +23,7 @@ export const EngagementAnalytics: React.FC = () => {
     return true;
   });
 
-  const relevantClients = clients.filter((c) => {
-    if (selectedCompanyId !== 'ALL' && c.companyId !== selectedCompanyId) return false;
-    return true;
-  });
+  const relevantClients = clients.filter((c) => doesClientBelongToCompany(c, selectedCompanyId));
 
   // Calculate tier metrics
   const tierAClients = relevantClients.filter((c) => c.tier === 'A');

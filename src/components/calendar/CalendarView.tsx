@@ -21,6 +21,10 @@ import {
   ChevronUp,
   RotateCcw,
   Sparkles,
+  AlertTriangle,
+  Repeat,
+  Zap,
+  Layers,
 } from 'lucide-react';
 import {
   CURRENT_VIRTUAL_TIME,
@@ -34,6 +38,8 @@ import {
   generateMasterIcs,
   triggerFileDownload,
   DayColumnInfo,
+  formatCadenceLabel,
+  isMeetingOverdueUnheld,
 } from '../../utils/calendarUtils';
 
 interface CalendarViewProps {
@@ -58,6 +64,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     toggleCalendarVisibility,
     selectAllCalendars,
     deselectAllCalendars,
+    overdueOrMissedMeetings,
+    runAutoRescheduleScan,
   } = useApp();
 
   // Navigation states: default to current date
@@ -558,6 +566,41 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
         </div>
 
+        {/* Missed / Overdue Scheduled Meeting Auto-Reschedule Banner */}
+        {overdueOrMissedMeetings.length > 0 && (
+          <div className="bg-rose-950/30 border border-rose-500/30 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5 text-xs">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-semibold text-rose-200">
+                  {overdueOrMissedMeetings.length} Scheduled{' '}
+                  {overdueOrMissedMeetings.length === 1 ? 'Meeting' : 'Meetings'} Passed Without
+                  Completion
+                </div>
+                <div className="text-[11px] text-rose-300/80 mt-0.5">
+                  Automatically advance to the next company/client cadence slot while preserving
+                  original date &amp; time, or inspect manually.
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => onOpenMeeting(overdueOrMissedMeetings[0].id)}
+                className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 rounded-lg border border-neutral-700 text-xs font-medium cursor-pointer"
+              >
+                Inspect First
+              </button>
+              <button
+                onClick={() => runAutoRescheduleScan()}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Auto-Reschedule All ({overdueOrMissedMeetings.length})
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ======================================================== */}
         {/* VIEW MODE 1 & 2: 4-DAY / WEEK HOURLY MATRIX             */}
         {/* ======================================================== */}
@@ -683,6 +726,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                           m.companyId === 'cal-mandar' ||
                           m.companyId === 'cal-rajadhyaksha' ||
                           m.companyId === 'cal-sm';
+                        const isMissedOrOverdue =
+                          m.status === 'missed' ||
+                          (m.startTime >= '2026-10-01' && isMeetingOverdueUnheld(m, now));
 
                         return (
                           <div
@@ -693,7 +739,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                               height: pos.height,
                             }}
                             className={`absolute left-1 right-1 z-10 p-1.5 rounded border text-xs cursor-pointer overflow-hidden transition-all shadow-xs hover:z-30 hover:ring-1 hover:ring-white/40 ${
-                              isProminentPurple
+                              isMissedOrOverdue
+                                ? 'bg-rose-950/85 border-rose-500/70 text-rose-100 hover:bg-rose-900/90'
+                                : isProminentPurple
                                 ? 'bg-purple-900/70 border-purple-500/50 text-purple-100 hover:bg-purple-800/80'
                                 : 'bg-neutral-950/90 border-neutral-700/80 text-neutral-100 hover:bg-neutral-850'
                             }`}
@@ -702,20 +750,29 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                               <span className="font-semibold truncate text-[11px]">
                                 {m.title}
                               </span>
-                              {cli?.tier && (
-                                <span className="text-[9px] font-mono px-1 rounded bg-black/40 text-neutral-300 shrink-0 font-bold">
-                                  T{cli.tier}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                {m.engagementType === 'one_time' && (
+                                  <span className="text-[8px] font-mono px-1 rounded bg-amber-500/25 text-amber-200 font-bold">
+                                    1x
+                                  </span>
+                                )}
+                                {cli?.tier && (
+                                  <span className="text-[9px] font-mono px-1 rounded bg-black/40 text-neutral-300 font-bold">
+                                    T{cli.tier}
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             <div className="text-[10px] text-neutral-300 font-mono mt-0.5 truncate tabular-nums">
+                              {isMissedOrOverdue ? 'MISSED · ' : m.autoRescheduled ? 'RESCHED · ' : ''}
                               {formatTimeRange(m.startTime, m.endTime)}
                             </div>
 
                             {/* Location preview if space allows */}
                             {parseInt(pos.height) > 45 && (
                               <div className="text-[10px] text-neutral-400 truncate mt-1">
+                                {m.serviceScope ? `${m.serviceScope} · ` : ''}
                                 {m.location}
                               </div>
                             )}
@@ -862,7 +919,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 hover:border-neutral-700 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs"
                   >
                     <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="flex items-center gap-1.5 font-medium text-neutral-300">
                           <span
                             className="w-2 h-2 rounded-full"
@@ -870,17 +927,39 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                           />
                           {comp?.name}
                         </span>
-                        <span>·</span>
-                        <span className="text-neutral-200 font-semibold">{cli?.name}</span>
-                        {cli?.tier && (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                            Tier {cli.tier}
+                        {cli && (
+                          <>
+                            <span>·</span>
+                            <span className="text-neutral-200 font-semibold">{cli.name}</span>
+                          </>
+                        )}
+                        {meeting.scope === 'department' && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-sky-500/10 text-sky-300 border border-sky-500/20 flex items-center gap-1">
+                            <Layers className="w-2.5 h-2.5" />
+                            Dept
                           </span>
                         )}
-                        <span>·</span>
-                        <span className="text-neutral-400 text-[11px] font-mono">
-                          {meeting.meetingType}
-                        </span>
+                        {meeting.engagementType === 'one_time' ? (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <Zap className="w-2.5 h-2.5" />
+                            One-Time Deal
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
+                            <Repeat className="w-2.5 h-2.5" />
+                            {formatCadenceLabel(meeting.cadence)}
+                          </span>
+                        )}
+                        {meeting.status === 'missed' && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                            MISSED
+                          </span>
+                        )}
+                        {meeting.originalStartTime && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                            Rescheduled from {formatDateLabel(meeting.originalStartTime)}
+                          </span>
+                        )}
                       </div>
 
                       <h3
@@ -896,6 +975,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         <span className="text-neutral-300">{formatTimeRange(meeting.startTime, meeting.endTime)}</span>
                         <span>·</span>
                         <span className="text-neutral-400 truncate max-w-sm font-sans">
+                          {meeting.serviceScope ? `${meeting.serviceScope} · ` : ''}
                           {meeting.location}
                         </span>
                       </div>
